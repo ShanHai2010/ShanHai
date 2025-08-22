@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>山海&北袅</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- 谷歌思源黑体 + 站酷庆科黄油体 -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --card: rgba(22, 22, 22, 0.75);
+      --accent: #ffd369;
+      --text: #e2e2e2;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Noto Serif SC', serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* 背景流光 */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(45deg,
+        #0a0a0a 0%,
+        #111 25%,
+        #1a1a1a 50%,
+        #111 75%,
+        #0a0a0a 100%);
+      background-size: 400% 400%;
+      animation: bgFlow 20s ease infinite;
+      z-index: -1;
+    }
+
+    @keyframes bgFlow {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .wrapper {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      padding: 4rem 1.2rem;
+    }
+
+    h1 {
+      font-family: 'ZCOOL KuaiLe', cursive;
+      font-size: 2.8rem;
+      color: var(--accent);
+      margin-bottom: 3rem;
+      letter-spacing: 4px;
+      text-shadow: 0 0 10px var(--accent);
+    }
+
+    .scroll {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .item {
+      position: relative;
+      background: var(--card);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 12px 12px 0;
+      padding: 2rem 1.5rem;
+      transition: transform .35s ease, box-shadow .35s ease;
+      box-shadow: 0 6px 18px rgba(255, 211, 105, 0.05);
+    }
+
+    .item:hover {
+      transform: translateX(10px);
+      box-shadow: 0 8px 28px rgba(255, 211, 105, 0.25);
+    }
+
+    .item a {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .item h2 {
+      font-size: 1.6rem;
+      margin-bottom: .3rem;
+      color: var(--accent);
+    }
+
+    .item p {
+      font-size: .95rem;
+      line-height: 1.4;
+      color: #bbb;
+    }
+
+    .item::after {
+      content: "〉";
+      position: absolute;
+      right: 1.2rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1.4rem;
+      color: var(--accent);
+      opacity: .6;
+      transition: opacity .3s;
+    }
+
+    .item:hover::after {
+      opacity: 1;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrapper">
+    <h1>北袅 · 导航</h1>
+
+    <div class="scroll">
+      <!-- 项目 1 -->
+      <div class="item">
+        <a href="https://t.me/BNGFPD" target="_blank">
+          <h2>官方频道</h2>
+          <p>加入即可畅玩最新的</p>
+        </a>
+      </div>
+
+      <!-- 项目 2 -->
+      <div class="item">
+        <a href="https://t.me/XMFKBN" target="_blank">
+          <h2>反馈地址</h2>
+          <p>当你有反馈截图，可以点击这个跳转电报进行反馈</p>
+        </a>
+      </div>
+
+      <!-- 项目 3 -->
+      <div class="item">
+        <a href="https://share.feijipan.com/s/R3OCq4cN" target="_blank">
+          <h2>熊猫直装</h2>
+          <p>唯一的缺点就是能够稳定猝死</p>
+        </a>
+      </div>
+            <!-- 项目 3 -->
+      <div class="item">
+        <a href="" target="_blank">
+          <h2>北极星直装(未更新)</h2>
+          <p>十分的稳定</p>
+        </a>
+      </div>
+              </div> <!-- 页脚 -->
+        <footer class="text-center mt-16 text-gray-500 text-sm fade-in" style="animation-delay: 0.7s;">
+         <p>© 2025 版权声明 : 山海所有</p>
+         <p class="mt-2 text-xs text-gray-400">系统状态: 正常运行中</p>
+        </footer> </a>
+    </div>
+  </div>
+</body>
+</html>
+
