@@ -2,13 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>山海&北袅</title>
+  <title>山海&南诗</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- 谷歌思源黑体 + 站酷庆科黄油体 -->
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
-
   <style>
     :root {
       --bg: #0a0a0a;
@@ -31,7 +28,6 @@
       overflow-x: hidden;
     }
 
-    /* 背景流光 */
     body::before {
       content: "";
       position: fixed;
@@ -127,51 +123,159 @@
     .item:hover::after {
       opacity: 1;
     }
+
+    .music-control {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      width: 50px;
+      height: 50px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(255, 211, 105, 0.3);
+      transition: transform 0.3s ease;
+      z-index: 100;
+    }
+
+    .music-control:hover {
+      transform: scale(1.1);
+    }
+
+    .music-control.playing {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 4px 15px rgba(255, 211, 105, 0.3); }
+      50% { box-shadow: 0 4px 25px rgba(255, 211, 105, 0.6); }
+      100% { box-shadow: 0 4px 15px rgba(255, 211, 105, 0.3); }
+    }
+
+    .music-icon {
+      width: 24px;
+      height: 24px;
+      position: relative;
+    }
+
+    .music-icon::before {
+      content: "♪";
+      font-size: 24px;
+      color: var(--bg);
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    footer {
+      margin-top: 4rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: #666;
+    }
   </style>
 </head>
-
 <body>
   <div class="wrapper">
-    <h1>北袅 · 导航</h1>
-
+    <h1>南诗 · 导航</h1>
     <div class="scroll">
-      <!-- 项目 1 -->
       <div class="item">
-        <a href="https://t.me/BNGFPD" target="_blank">
+        <a href="https://t.me/SNKNB" target="_blank">
           <h2>官方频道</h2>
           <p>加入即可畅玩最新的</p>
         </a>
       </div>
-
-      <!-- 项目 2 -->
       <div class="item">
-        <a href="https://t.me/XMFKBN" target="_blank">
+        <a href="https://t.me/NSNB1166" target="_blank">
           <h2>反馈地址</h2>
           <p>当你有反馈截图，可以点击这个跳转电报进行反馈</p>
         </a>
       </div>
-
-      <!-- 项目 3 -->
       <div class="item">
-        <a href="https://share.feijipan.com/s/R3OCq4cN" target="_blank">
-          <h2>熊猫直装</h2>
+        <a href="https://t.me/SNKNB/18695" target="_blank">
+          <h2>索尼克•装载机</h2>
           <p>唯一的缺点就是能够稳定猝死</p>
         </a>
       </div>
-            <!-- 项目 3 -->
       <div class="item">
-        <a href="" target="_blank">
-          <h2>北极星直装(未更新)</h2>
+        <a href="https://t.me/SNKNB/18623?single" target="_blank">
+          <h2>索尼克•加速</h2>
           <p>十分的稳定</p>
         </a>
       </div>
-              </div> <!-- 页脚 -->
-        <footer class="text-center mt-16 text-gray-500 text-sm fade-in" style="animation-delay: 0.7s;">
-         <p>© 2025 版权声明 : 山海所有</p>
-         <p class="mt-2 text-xs text-gray-400">系统状态: 正常运行中</p>
-        </footer> </a>
     </div>
+    <footer>
+      <p>© 2025 版权声明 : 山海所有</p>
+      <p class="mt-2 text-xs text-gray-400">系统状态: 正常运行中</p>
+    </footer>
   </div>
+
+  <!-- 音乐控制按钮 -->
+  <div class="music-control" id="musicControl">
+    <div class="music-icon"></div>
+  </div>
+
+  <!-- 本地音频 -->
+  <audio id="bgMusic" loop>
+    <source src="music.mp3" type="audio/mpeg">
+    您的浏览器不支持音频元素。
+  </audio>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const musicControl = document.getElementById('musicControl');
+      const bgMusic = document.getElementById('bgMusic');
+      let isPlaying = false;
+
+      function tryAutoPlay() {
+        bgMusic.play().then(() => {
+          isPlaying = true;
+          musicControl.classList.add('playing');
+        }).catch(() => {
+          document.addEventListener('click', handleFirstInteraction, { once: true });
+          document.addEventListener('touchstart', handleFirstInteraction, { once: true });
+        });
+      }
+
+      function handleFirstInteraction() {
+        if (!isPlaying) {
+          bgMusic.play().then(() => {
+            isPlaying = true;
+            musicControl.classList.add('playing');
+          });
+        }
+      }
+
+      musicControl.addEventListener('click', function () {
+        if (isPlaying) {
+          bgMusic.pause();
+          musicControl.classList.remove('playing');
+        } else {
+          bgMusic.play().then(() => {
+            musicControl.classList.add('playing');
+          });
+        }
+        isPlaying = !isPlaying;
+      });
+
+      bgMusic.addEventListener('play', () => {
+        isPlaying = true;
+        musicControl.classList.add('playing');
+      });
+
+      bgMusic.addEventListener('pause', () => {
+        isPlaying = false;
+        musicControl.classList.remove('playing');
+      });
+
+      setTimeout(tryAutoPlay, 1000);
+    });
+  </script>
 </body>
 </html>
+
 
