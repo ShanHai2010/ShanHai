@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>山海 · 导航</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a1a;
+  --bg-light:#13132b;
+  --card:rgba(25,25,46,.50);
+  --accent:#d4af37;
+  --accent-bright:#e6c158;
+  --text:#f2f2f2;
+  --radius:18px;
+  --ease:cubic-bezier(.4,0,.2,1)
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:'Noto Serif SC',serif;background:var(--bg);color:var(--text)}
+/* 噪点纹理层 */
+body::after{
+  content:"";
+  position:fixed;inset:0;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");
+  z-index:-1;
+}
+.wrapper{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:4rem 1.2rem}
+h1{font-family:'ZCOOL KuaiLe',cursive;font-size:clamp(2.4rem,5vw,3.6rem);color:var(--accent);letter-spacing:.5px;text-shadow:0 0 10px rgba(212,175,55,.4)}
+.sub{opacity:0;animation:fadeIn .8s .4s forwards}
+@keyframes fadeIn{to{opacity:1}}
+.scroll{width:100%;max-width:440px;display:flex;flex-direction:column;gap:1.6rem;margin-top:2rem}
+.card{
+  position:relative;
+  background:var(--card);
+  border:1px solid rgba(212,175,55,.12);
+  border-radius:var(--radius);
+  padding:1.8rem 2rem;
+  backdrop-filter:blur(22px);
+  box-shadow:0 4px 18px rgba(0,0,0,.25);
+  transition:transform .35s var(--ease),box-shadow .35s var(--ease),border-color .35s var(--ease);
+  transform-style:preserve-3d;
+  perspective:1000px;
+  overflow:hidden
+}
+.card:hover{
+  transform:translateY(-4px) scale(1.015);
+  box-shadow:0 12px 30px rgba(212,175,55,.18);
+  border-color:var(--accent-bright)
+}
+/* 香槟金扫光 */
+.card::before{
+  content:"";
+  position:absolute;inset:-100%;
+  background:conic-gradient(from 0deg,transparent 0%,var(--accent-bright) 45%,transparent 50%);
+  animation:sweep 6s linear infinite;
+  opacity:.08
+}
+.card:hover::before{animation-duration:1.2s}
+@keyframes sweep{to{transform:rotate(360deg)}}
+.card a{position:relative;z-index:1;display:block;text-decoration:none;color:inherit}
+.card h3{font-size:1.4rem;margin-bottom:.3rem;color:var(--accent)}
+.card p{font-size:.9rem;line-height:1.6;opacity:.85}
+/* 点击涟漪 */
+.ripple{position:absolute;border-radius:50%;background:var(--accent-bright);pointer-events:none;transform:scale(0);animation:ripple .6s ease-out}
+@keyframes ripple{to{transform:scale(4);opacity:0}}
+/* 音乐钮 + 24 段灯带 */
+.music-control{
+  position:fixed;bottom:2.2rem;right:2.2rem;
+  width:54px;height:54px;border-radius:50%;
+  background:#111;border:2px solid var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:100;
+  transition:transform .2s var(--ease)
+}
+.music-control:active{transform:scale(.92)}
+.disc{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at center,#222 0%,#000 60%,var(--accent) 60%,var(--accent) 65%,#000 65%);animation:spin 4s linear infinite paused}
+.ring{position:absolute;inset:-4px;border-radius:50%;pointer-events:none}
+.segment{position:absolute;inset:0;border-radius:50%;opacity:0;transition:opacity .2s}
+.segment::before{content:"";position:absolute;width:2px;height:4px;background:var(--accent-bright);left:50%;top:0;transform:translateX(-50%)}
+.music-control.playing .disc{animation-play-state:running}
+@keyframes spin{to{transform:rotate(360deg)}}
+footer{margin-top:3rem;font-size:.75rem;color:#666;letter-spacing:.5px}
+::-webkit-scrollbar{display:none}
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <h1>山海 · 导航</h1>
+  <p class="sub">Shan-Hai-Cheat</p>
+  <div class="scroll">
+    <div class="card"><a href="https://t.me/HELLOIMGUI" target="_blank"><h3>官方频道</h3><p>加入即可畅玩最新的</p></a></div>
+    <div class="card"><a href="https://t.me/ShanHai8868bot" target="_blank"><h3>反馈地址</h3><p>当你有反馈截图，可以点击这个跳转电报进行反馈</p></a></div>
+    <div class="card"><a href="https://t.me/HELLOIMGUI/397" target="_blank"><h3>装载机</h3><p>唯一的缺点就是能够稳定猝死</p></a></div>
+    <div class="card"><a href="" target="_blank"><h3>加速</h3><p>十分的稳定</p></a></div>
+  </div>
+  <footer>© 2025 山海所有 · 系统状态：正常运行</footer>
+</div>
+
+<div class="music-control" id="musicControl">
+  <div class="ring" id="ring"></div>
+  <div class="disc"></div>
+</div>
+<audio id="bgMusic" loop>
+  <source src="music.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+/* 原逻辑 + 涟漪 + 24 段灯带 */
+const btn=document.getElementById('musicControl'),audio=document.getElementById('bgMusic'),ring=document.getElementById('ring');
+btn.addEventListener('click',()=>{audio.paused?audio.play():audio.pause();btn.classList.toggle('playing')});
+audio.addEventListener('play',()=>btn.classList.add('playing'));
+audio.addEventListener('pause',()=>btn.classList.remove('playing'));
+
+/* 24 段灯带 */
+for(let i=0;i<24;i++){
+  const s=document.createElement('div');s.className='segment';s.style.transform=`rotate(${i*15}deg)`;ring.appendChild(s);
+}
+const segments=ring.children;
+const actx=new (window.AudioContext||window.webkitAudioContext)();
+const src=actx.createMediaElementSource(audio);
+const analyser=actx.createAnalyser();analyser.fftSize=64;
+src.connect(analyser);src.connect(actx.destination);
+const data=new Uint8Array(analyser.frequencyBinCount);
+function light(){
+  analyser.getByteFrequencyData(data);
+  for(let i=0;i<24;i++){
+    const v=data[Math.floor(i/24*32)]/255;
+    segments[i].style.opacity=v>.1?v:0;
+  }
+  requestAnimationFrame(light);
+}
+addEventListener('click',()=>{if(actx.state==='suspended')actx.resume();light();},{once:true});
+
+/* 涟漪 */
+document.querySelectorAll('.card').forEach(card=>{
+  card.addEventListener('click',function(e){
+    const r=document.createElement('span');r.className='ripple';
+    const rect=card.getBoundingClientRect(),size=Math.max(rect.width,rect.height);
+    r.style.width=r.style.height=size+'px';
+    r.style.left=e.clientX-rect.left-size/2+'px';
+    r.style.top=e.clientY-rect.top-size/2+'px';
+    card.appendChild(r);setTimeout(()=>r.remove(),600);
+  });
+});
+</script>
+</body>
+</html>
