@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>山海杀组系统 - 黑金组合专版</title>
+<style>
+:root{
+    --bg: #0a0a0a; /* 黑金主背景-深黑 */
+    --card: #121212; /* 卡片背景-哑光黑 */
+    --text: #f5f0e1; /* 主文本-米白 */
+    --muted: #948c75; /* 次要文本-暗金灰 */
+    --primary: #d4af37; /* 主色-亮金 */
+    --primary-weak: #221f16; /* 主色浅背景-暗金底 */
+    --border: #332c1b; /* 边框-暗金纹 */
+    --success: #a67c00; /* 成功色-古铜金（杀组生效） */
+    --danger: #ffd700; /* 危险色-亮黄金（杀组失效） */
+    --danger-weak: #1a170f; /* 危险浅背景-黑金底 */
+    --warning: #f9c74f; /* 警告色-浅金 */
+    --warning-weak: #201c10; /* 警告浅背景-暗金底 */
+    --shadow: 0 6px 15px rgb(0 0 0 / 40%); /* 黑金阴影-深黑渐变 */
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size: 13px;
+    padding: 8px 0;
+}
+.container{
+    max-width:768px;
+    margin:0 auto;
+    padding:0 12px;
+}
+.card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    box-shadow:var(--shadow);
+    padding:18px;
+    margin-bottom: 10px;
+}
+/* 头部 */
+.header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom: 15px;
+}
+.logo{
+    font-weight:700;
+    font-size:18px;
+    color:var(--primary);
+    text-shadow: 0 0 8px rgba(212,175,55,0.3); /* 金色文字发光效果 */
+}
+.small{color:var(--muted);font-size:11px}
+/* 最新开奖 */
+.current{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:6px;
+    text-align:center;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--primary-weak);
+    margin-bottom: 15px;
+}
+.current .period{font-weight:700;font-size:16px; color:var(--primary);}
+.current .nums{font-size:19px;font-weight:700;color:var(--danger); text-shadow: 0 0 6px rgba(255,215,0,0.2);}
+.current .badge{
+    display:inline-block;
+    background:var(--primary-weak);
+    color:var(--primary);
+    padding:2px 8px;
+    border-radius:999px;
+    font-weight:700;
+    margin-left:8px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+}
+.current .opentime {
+    font-size: 13px;
+    color: var(--muted);
+}
+/* 倒计时 */
+.countdown{
+    margin-top:4px;
+    font-size:13px;
+    color:var(--muted);
+    text-align: center;
+}
+.countdown.highlight{color:var(--danger);font-weight:700; text-shadow: 0 0 6px rgba(255,215,0,0.3);}
+/* 核心杀组（显眼区域）- 黑金高光样式 */
+.kill-core{
+    background: var(--danger-weak);
+    border: 2px solid var(--danger);
+    border-radius: 10px;
+    padding: 20px 10px;
+    text-align: center;
+    margin: 20px 0;
+    position: relative;
+    box-shadow: 0 0 15px rgba(255,215,0,0.15); /* 金色外发光 */
+}
+.kill-core::before{
+    content: "最终杀组";
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--danger);
+    color: var(--bg); /* 金色背景配黑字，对比更强烈 */
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.kill-value{
+    font-size: 40px;
+    font-weight: 800;
+    color: var(--danger);
+    letter-spacing: 5px;
+    text-shadow: 0 0 10px rgba(255,215,0,0.4); /* 黄金大字发光效果 */
+}
+.kill-period{
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--primary);
+}
+/* 状态、算法标签 */
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 0 auto;
+    display: flex;
+    justify-content: center;
+    border: 1px solid var(--border);
+}
+.status-indicator.calculating {
+    background: var(--warning-weak);
+    color: var(--warning);
+}
+.status-indicator.ready {
+    background: var(--primary-weak);
+    color: var(--success);
+}
+.algorithm-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--primary-weak);
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 11px;
+    margin: 0 auto 10px auto;
+    display: flex;
+    justify-content: center;
+    border: 1px solid var(--border);
+}
+/* 计算过程 - 黑金哑光样式 */
+.calculation-process {
+    margin-top: 15px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--primary-weak);
+}
+.calculation-header {
+    background: var(--card);
+    color: var(--primary);
+    padding: 6px 10px;
+    cursor: pointer;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+}
+.calculation-content {
+    padding: 10px;
+    background: var(--card);
+    font-size: 12px;
+    line-height: 1.4;
+    display: none;
+    max-height: 250px;
+    overflow-y: auto;
+}
+.calculation-content.show {
+    display: block;
+}
+.calculation-step {
+    margin-bottom: 6px;
+    padding: 5px 6px;
+    background: var(--primary-weak);
+    border-radius: 4px;
+    border-left: 3px solid var(--primary);
+    font-size: 12px;
+    color: var(--text);
+}
+.calculation-step:last-child {
+    margin-bottom: 0;
+}
+.calculation-toggle {
+    font-size: 12px;
+    color: var(--muted);
+}
+/* 错误提示 */
+.error{color:var(--danger);padding:10px 0; font-size: 12px; text-align: center;}
+/* 表格区域 - 黑金质感表格 */
+.prediction-table-card{margin-top: 5px;}
+.table-title {
+    font-weight: 700;
+    margin: 16px 0 8px 0;
+    font-size: 14px;
+    text-align: center;
+    color: var(--primary);
+}
+.prediction-table {
+    margin-top: 12px;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.prediction-table th {
+    background: var(--primary-weak);
+    color: var(--primary);
+    padding: 5px 6px;
+    text-align: center;
+    font-weight: 600;
+    border: 1px solid var(--border);
+}
+.prediction-table td {
+    padding: 3px 5px;
+    text-align: center;
+    border: 1px solid var(--border);
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* 杀组生效高亮，失效暗灰 */
+.prediction-table .correct {
+    color: var(--success) !important;
+    font-weight: 700 !important;
+    text-shadow: 0 0 5px rgba(166,124,0,0.3);
+}
+.prediction-table .wrong {
+    color: #777 !important;
+    font-weight: 400 !important;
+}
+.stats {
+    margin-top: 10px;
+    padding: 6px;
+    background: var(--primary-weak);
+    border-radius: 6px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--primary);
+    font-size: 12px;
+    border: 1px solid var(--border);
+}
+.hidden {
+    display: none !important;
+}
+.loading {
+    color: var(--primary);
+    font-weight: 600;
+    font-style: italic;
+    text-align: center;
+}
+/* 滚动条黑金样式 - 适配高端质感 */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: var(--card);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--danger);
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div id="error" class="error" style="display:none;"></div>
+  <div class="card">
+	<div class="header">
+	  <div class="logo">山海</div>
+	  <div class="small">高端黑金算法</div>
+	</div>
+	<div class="current">
+	  <div class="period">最新：<span id="cur-period">--</span> 期</div>
+	  <div class="nums"><span id="cur-nums">--+--+--=--</span></div>
+	  <div class="opentime">开奖时间：<span id="cur-time">-- --:--:--</span></div>
+	  <div id="cd" class="countdown" style="display:none;">下一期：<span id="cd-txt">--分--秒</span></div>
+	</div>
+	<span id="algorithm-tag" class="algorithm-tag">(第13期+第18期)/2 杀组算法</span>
+	<div id="status-indicator" class="status-indicator calculating">计算中...</div>
+	<!-- 核心杀组：黑金显眼展示 -->
+	<div class="kill-core">
+	  <div class="kill-value" id="kill-group">--</div>
+	  <div class="kill-period">杀组期数：<span id="ai-nextperiod">--</span> 期</div>
+	</div>
+	<!-- 计算过程 -->
+	<div class="calculation-process">
+	  <div class="calculation-header" onclick="toggleCalculation()">
+		<span>计算过程</span>
+		<span class="calculation-toggle">▼</span>
+	  </div>
+	  <div id="calculation-content" class="calculation-content">
+		<div id="calculation-steps"></div>
+	  </div>
+	</div>
+  </div>
+  <!-- 历史杀组表格：黑金样式 -->
+  <div class="card" id="prediction-table-card" style="display:none;">
+	<div class="table-title">杀组验证记录（最新50期）<span id="table-algorithm-tag" class="algorithm-tag">(第13期+第18期)/2 杀组算法</span></div>
+	<table class="prediction-table">
+	  <thead>
+		<tr>
+		  <th>期号</th>
+		  <th>开奖结果</th>
+		  <th>当期杀组</th>
+		  <th>杀组结果</th>
+		</tr>
+	  </thead>
+	  <tbody id="prediction-tbody">
+	  </tbody>
+	</table>
+	<div id="stats" class="stats"></div>
+  </div>
+</div>
+<script>
+// 数据请求基础配置
+async function fetchLotteryData() {
+	try {
+		const response = await fetch('https://super.pc28998.com/history/JND28');
+		if (!response.ok) throw new Error('网络响应不正常');
+		const data = await response.json();
+		if (data.code !== 1 || !data.data) throw new Error('数据格式错误');
+		return data.data;
+	} catch (error) {
+		console.error('获取开奖数据失败:', error);
+		throw error;
+	}
+}
+const fieldConfig = {
+  periodField:'expect',
+  numbersField:'opencode',
+  timeField:'opentime',
+  separator:',',
+  apiUrl:'https://super.pc28998.com/history/JND28'
+};
+let data=[], page=1, pageSize=15, nextTime=null, timer=null, isFetching=false;
+let currentPrediction = null;
+document.addEventListener('DOMContentLoaded', init);
+function init(){
+  fetchData();
+}
+function setError(msg){
+  const el=document.getElementById('error');
+  el.textContent=msg; el.style.display='block';
+}
+function clearError(){document.getElementById('error').style.display='none';}
+async function fetchData(){
+  if(isFetching) return;
+  isFetching = true;
+  clearError();
+  try {
+	const lotteryData = await fetchLotteryData();
+	data = extractArray(lotteryData).slice(0,100).map(item => ({
+	  ...item,
+	  nums: parseNums(item[fieldConfig.numbersField])
+	}));
+	if(!data.length) throw new Error('没有获取到开奖数据');
+	renderCurrent();
+	setupCountdown();
+	document.getElementById('status-indicator').className = 'status-indicator calculating';
+	document.getElementById('status-indicator').textContent = '计算中...';
+	setTimeout(() => {
+	  renderAIPredict();
+	  renderPredictionTable();
+	  document.getElementById('status-indicator').className = 'status-indicator ready';
+	  document.getElementById('status-indicator').textContent = '杀组完成';
+	}, 1000);
+	isFetching = false;
+  } catch(e){
+	console.error(e);
+	setError('获取数据出错：'+e.message);
+	isFetching = false;
+  }
+}
+function extractArray(res){
+  if(Array.isArray(res)) return res;
+  if(res && typeof res==='object'){
+	const keys=['data','items','list','results','records'];
+	for(const k of keys){ if(Array.isArray(res[k])) return res[k]; }
+	for(const k in res){ if(Array.isArray(res[k])) return res[k]; }
+  }
+  return [];
+}
+function parseNums(opennum){
+  if(!opennum) return [];
+  return String(opennum).split(fieldConfig.separator).map(s=>s.trim()).filter(Boolean).map(n=>parseInt(n,10)||0);
+}
+function sum(nums){return nums.reduce((a,b)=>a+b,0);}
+// 大小单双判定基础方法
+function tagByNewRule(num) {
+  const size = num <= 13 ? '小' : '大';
+  const oe = num % 2 === 0 ? '双' : '单';
+  return { size, oe, combo: size+oe };
+}
+
+// ===================== 核心杀组算法 =====================
+// 规则：(第13期+第18期)÷2 → 按小数/整数判定杀组
+function newCodeSumAlgorithm(data) {
+  const steps = [];
+  steps.push(`<strong>算法规则：(第13期和值 + 第18期和值) ÷ 2 → 判定杀组</strong>`);
+
+  // 至少需要18期数据（data[0]最新期，data[12]=第13期，data[17]=第18期）
+  if (!data || data.length < 18) {
+    return {
+      nextPeriod: '--',
+      killGroup: '数据不足（需18期）',
+      predictCombos: [],
+      calculationSteps: [...steps, '数据不足，无法计算杀组'],
+    };
+  }
+
+  try {
+    const p13 = data[12]; // 第13期（从最新期往前数12位）
+    const p18 = data[17]; // 第18期（从最新期往前数17位）
+    const sum13 = sum(p13.nums);
+    const sum18 = sum(p18.nums);
+    const total = (sum13 + sum18) / 2;
+    const integerPart = Math.floor(total);
+
+    // 计算过程步骤
+    steps.push(`第13期（${p13.expect}）和值：${sum13}`);
+    steps.push(`第18期（${p18.expect}）和值：${sum18}`);
+    steps.push(`计算：(${sum13} + ${sum18}) ÷ 2 = <strong>${total}</strong>`);
+    steps.push(`整数部分：${integerPart}，小数：${Number.isInteger(total) ? '无' : '有'}`);
+
+    let killGroup = '';
+    // 整数判定
+    if (Number.isInteger(total)) {
+      const tag = tagByNewRule(total);
+      killGroup = tag.combo;
+      steps.push(`结果为整数 → ${total} → 杀组：${killGroup}`);
+    } else {
+      // 小数判定
+      if (total === 13.5) {
+        killGroup = '小单大双';
+      } else if (total === 14.5) {
+        killGroup = '大单大双';
+      } else if (integerPart <= 13) {
+        killGroup = '小单小双';
+      } else if (integerPart >= 14) {
+        killGroup = '大单大双';
+      } else {
+        killGroup = '未知';
+      }
+      steps.push(`结果为小数 → 杀组：<strong>${killGroup}</strong>`);
+    }
+
+    steps.push(`<strong>最终杀组：${killGroup}</strong>`);
+    return {
+      nextPeriod: String(Number(data[0].expect) + 1),
+      killGroup: killGroup,
+      predictCombos: [killGroup], // 用于验证
+      calculationSteps: steps,
+    };
+  } catch (e) {
+    steps.push(`计算出错：${e.message}`);
+    return {
+      nextPeriod: '--',
+      killGroup: '计算错误',
+      predictCombos: [],
+      calculationSteps: steps,
+    };
+  }
+}
+// ========================================================
+
+// 时间格式化
+function fmtTime(s){
+  try{
+	if(typeof s==='string' && s.includes('-') && s.includes(':')){
+	  const now=new Date();
+	  const [md, hms] = s.split(' ');
+	  const [M,D]=md.split('-').map(Number);
+	  const [hh,mm,ss] = hms.split(':').map(Number);
+	  const pad = n => String(n).padStart(2, '0');
+	  return `${pad(M)}-${pad(D)} ${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+	}
+	const ts = Number(s);
+	if(!Number.isNaN(ts)){
+	const d = new Date(ts > 1e12 ? ts : ts*1000);
+	  const pad=n=>String(n).padStart(2,'0');
+	  return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+	}
+  }catch(e){}
+  return '-- --:--:--';
+}
+// 渲染最新开奖
+function renderCurrent(){
+  const latest=data[0];
+  const period= latest[fieldConfig.periodField] ?? '--';
+  const nums = latest.nums || [];
+  const s = sum(nums);
+  const numsTxt = (nums.length? nums.join('+')+'=' + s : '--+--+--=--');
+  const openTime = fmtTime(latest[fieldConfig.timeField]);
+  document.getElementById('cur-period').textContent = period;
+  document.getElementById('cur-nums').textContent = numsTxt;
+  document.getElementById('cur-time').textContent = openTime;
+}
+// 倒计时逻辑
+function setupCountdown(){
+  if(timer) clearInterval(timer);
+  const latest=data[0]; const ts = latest[fieldConfig.timeField];
+  let t=null;
+  try{
+	if(typeof ts==='string' && ts.includes('-') && ts.includes(':')){
+	  const now=new Date();
+	  const [md, hms] = ts.split(' ');
+	  const [M,D] = md.split('-').map(Number);
+	  const [hh,mm,ss] = hms.split(':').map(Number);
+	  t = new Date(now.getFullYear(), M-1, D, hh, mm, ss);
+	}else{
+	  const n = Number(ts);
+	  t = new Date(n > 1e12 ? n : n*1000);
+	}
+  }catch(e){}
+  if(!t){ document.getElementById('cd').style.display='none'; return; }
+  nextTime = new Date(t.getTime() + 3*60*1000 + 30*1000);
+  document.getElementById('cd').style.display='block';
+  tick();
+  timer=setInterval(tick,1000);
+}
+function tick(){
+  const now=new Date();
+  const diff= nextTime - now;
+  const el=document.getElementById('cd'); const txt=document.getElementById('cd-txt');
+  if(diff<=0){
+	clearInterval(timer);
+	txt.textContent='正在开奖...'; 
+	el.classList.add('highlight');
+	if(!isFetching) {
+	  setTimeout(fetchData, 1500);
+	}
+	return;
+  }
+  const m = Math.floor(diff/60000);
+  const s = Math.floor((diff%60000)/1000);
+  txt.textContent = `${m}分${String(s).padStart(2,'0')}秒`;
+  if(diff<30000) el.classList.add('highlight'); else el.classList.remove('highlight');
+}
+// 计算过程展开/收起
+function toggleCalculation() {
+  const content = document.getElementById('calculation-content');
+  const toggle = document.querySelector('.calculation-toggle');
+  if (content.classList.contains('show')) {
+	content.classList.remove('show');
+	toggle.textContent = '▼';
+  } else {
+	content.classList.add('show');
+	toggle.textContent = '▲';
+  }
+}
+function renderCalculationProcess(calculationSteps) {
+  const stepsEl = document.getElementById('calculation-steps');
+  if (!stepsEl) return;
+  let stepsHTML = '';
+  calculationSteps.forEach((step, index) => {
+	stepsHTML += `<div class="calculation-step">${step}</div>`;
+  });
+  stepsEl.innerHTML = stepsHTML;
+}
+// 杀组验证逻辑：杀组 != 开奖组合 → 生效（正确）
+function getPredictionResult(killGroup, actualSum) {
+  if(!killGroup || killGroup === '数据不足（需18期）' || killGroup === '计算错误') {
+    return {text: '无效', class: 'wrong'};
+  }
+  const actualCombo = tagByNewRule(actualSum).combo;
+  return killGroup !== actualCombo
+	? {text: '杀组生效', class: 'correct'} 
+	: {text: '杀组失效', class: 'wrong'};
+}
+// 渲染杀组结果
+function renderAIPredict(){
+  try{
+	if(!data.length) return;
+	const result = newCodeSumAlgorithm(data);
+	currentPrediction = result;
+	if (result) {
+	  document.getElementById('kill-group').textContent = result.killGroup;
+	  if (result.calculationSteps) {
+		renderCalculationProcess(result.calculationSteps);
+	  }
+	} else {
+	  document.getElementById('kill-group').textContent = '--';
+	}
+	const nextPeriod = (()=>{
+	  const cur = data[0][fieldConfig.periodField];
+	  const n = Number(cur);
+	  if(Number.isFinite(n)) return String(n+1);
+	  const m = String(cur||'').match(/(\d+)(\D*\d+)*/);
+	  return m ? String(Number(m[1])+1) : '--';
+	})();
+	document.getElementById('ai-nextperiod').textContent = nextPeriod;
+  }catch(e){
+	console.error('杀组计算错误:', e);
+  }
+}
+// 渲染历史表格（一行显示，期数对应）
+function renderPredictionTable() {
+  if (data.length < 19) { // 至少19期数据才够验证（第18期杀组对应第19期开奖）
+	document.getElementById('prediction-table-card').style.display = 'none';
+	return;
+  }
+  const tbody = document.getElementById('prediction-tbody');
+  tbody.innerHTML = '';
+  const max = Math.min(data.length - 18, 50); // 最多显示50条有效验证记录
+  let successCount = 0, totalCount = 0;
+
+  for (let i = 0; i < max; i++) {
+	const sliceData = data.slice(i); // 从第i期开始取数据（用于计算杀组）
+	const verifyData = data[i + 18]; // 第i+18期为验证开奖期
+	const result = newCodeSumAlgorithm(sliceData);
+	if (!result || !verifyData.nums || result.killGroup === '数据不足（需18期）' || result.killGroup === '计算错误') continue;
+
+	const actualSum = sum(verifyData.nums);
+	const actualCombo = tagByNewRule(actualSum).combo;
+	const verifyResult = getPredictionResult(result.killGroup, actualSum);
+	
+	totalCount++;
+	if (verifyResult.class === 'correct') successCount++;
+
+	// 构建表格行
+	const row = document.createElement('tr');
+	// 期号列
+	const periodCell = document.createElement('td');
+	periodCell.textContent = verifyData[fieldConfig.periodField] || '--';
+	// 开奖结果列（和值+大小单双）
+	const resultCell = document.createElement('td');
+	resultCell.textContent = `${verifyData.nums.join('+')}=${actualSum} ${actualCombo}`;
+	// 当期杀组列
+	const killCell = document.createElement('td');
+	killCell.textContent = result.killGroup;
+	killCell.style.color = 'var(--danger)';
+	killCell.style.fontWeight = 600;
+	// 杀组结果列
+	const resultTypeCell = document.createElement('td');
+	resultTypeCell.textContent = verifyResult.text;
+	resultTypeCell.className = verifyResult.class;
+
+	row.appendChild(periodCell);
+	row.appendChild(resultCell);
+	row.appendChild(killCell);
+	row.appendChild(resultTypeCell);
+	tbody.appendChild(row);
+  }
+
+  // 统计信息
+  if (totalCount > 0) {
+	const successRate = ((successCount / totalCount) * 100).toFixed(1);
+	document.getElementById('stats').innerHTML = `生效：${successCount}/${totalCount} ${successRate}% | 失效：${totalCount - successCount}/${totalCount} ${((totalCount - successCount)/totalCount*100).toFixed(1)}%`;
+  }
+  document.getElementById('prediction-table-card').style.display = 'block';
+}
+</script>
+</body>
+</html>
