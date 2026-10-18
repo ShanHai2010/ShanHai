@@ -1,196 +1,1401 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>中野一花 - 项目导航页</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: "Microsoft Yahei", system-ui, sans-serif;
-        }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>AI 视觉外挂 · 自恢复 · 60fps</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #05080a;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #e8fff9;
+  }
+  #stage { position: fixed; inset: 0; overflow: hidden; }
+  #video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #000;
+  }
+  #video.mirrored { transform: scaleX(-1); }
+  #overlay { position: absolute; inset: 0; pointer-events: none; }
+  #hud { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+  .hud-bar {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-top, 0px)) 16px;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .5px;
+    color: #9ff5dd;
+    background: linear-gradient(180deg, rgba(0,0,0,.75), rgba(0,0,0,0));
+  }
+  .badge { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #00ffc8;
+    box-shadow: 0 0 10px #00ffc8, 0 0 20px rgba(0,255,200,.6);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .dot.warn { background: #ffb800; box-shadow: 0 0 10px #ffb800, 0 0 20px rgba(255,184,0,.6); }
+  .dot.error { background: #ff4d4d; box-shadow: 0 0 10px #ff4d4d, 0 0 20px rgba(255,77,77,.6); animation: none; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  #stats { color: #6fe0c6; opacity: .9; }
+  #camInfo { color: #ffe14d; opacity: .95; }
+  .hud-right { display: inline-flex; align-items: center; gap: 10px; pointer-events: auto; }
+  #settingsBtn {
+    appearance: none; cursor: pointer;
+    width: 28px; height: 28px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 15px; line-height: 1;
+    color: #9ff5dd;
+    background: rgba(0,255,200,.08);
+    border: 1px solid rgba(0,255,200,.4);
+    transition: background .15s, transform .15s;
+  }
+  #settingsBtn:hover { background: rgba(0,255,200,.2); transform: rotate(35deg); }
 
-        body {
-            background-color: #08080b;
-            background-image: radial-gradient(circle at center, #1a1510 0%, #08080b 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
+  /* 恢复提示浮层 */
+  #recoverBanner {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    display: none;
+    flex-direction: column; align-items: center; gap: 10px;
+    padding: 20px 28px;
+    background: rgba(6, 20, 17, .9);
+    border: 1px solid rgba(255, 184, 0, .5);
+    border-radius: 4px;
+    text-align: center;
+    font-size: 13px; line-height: 1.7;
+    color: #ffd98a;
+    pointer-events: none;
+    z-index: 8;
+    box-shadow: 0 0 50px rgba(255,184,0,.15);
+  }
+  #recoverBanner.show { display: flex; }
+  #recoverBanner .spin {
+    width: 26px; height: 26px;
+    border: 2.5px solid rgba(255,184,0,.25);
+    border-top-color: #ffb800;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-        .main-card {
-            width: 100%;
-            max-width: 420px;
-            background: #121217;
-            border: 1px solid #d4af3740;
-            border-radius: 20px;
-            padding: 35px 28px;
-            box-shadow: 0 0 30px #d4af3725;
-            text-align: center;
-        }
+  #gate {
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    background: radial-gradient(circle at 50% 38%, #0e2521 0%, #05080a 68%);
+    transition: opacity .35s ease;
+    overflow-y: auto;
+  }
+  #gate.hidden { opacity: 0; pointer-events: none; }
 
-        /* 同级图片Logo容器 */
-        .logo-box {
-            width: 130px;
-            height: 130px;
-            margin: 0 auto 20px;
-            border-radius: 16px;
-            overflow: hidden;
-            border: 2px solid #d4af3760;
-        }
-        .logo-box img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+  .panel {
+    width: min(480px, 100%);
+    text-align: center;
+    padding: 28px 24px;
+    border: 1px solid rgba(0,255,200,.25);
+    border-radius: 4px;
+    background: rgba(6, 20, 17, .85);
+    box-shadow: 0 0 60px rgba(0,255,200,.09), inset 0 0 40px rgba(0,255,200,.04);
+    position: relative;
+  }
+  .panel::before, .panel::after {
+    content: ""; position: absolute; width: 18px; height: 18px;
+    border: 2px solid #00ffc8;
+  }
+  .panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+  .panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
 
-        .project-title {
-            font-size: 28px;
-            color: #d4af37;
-            font-weight: bold;
-            letter-spacing: 2px;
-            margin-bottom: 8px;
-        }
+  .panel h1 {
+    margin: 0 0 8px;
+    font-size: 21px; letter-spacing: 3px; font-weight: 700;
+    color: #00ffc8;
+    text-shadow: 0 0 18px rgba(0,255,200,.5);
+  }
+  .panel .sub { margin: 0 0 20px; font-size: 12.5px; color: #7fd8c4; letter-spacing: .5px; }
 
-        .project-sub {
-            color: #aaa;
-            font-size: 14px;
-            margin-bottom: 35px;
-        }
+  .settings {
+    text-align: left;
+    margin: 0 0 20px;
+    padding: 14px 16px;
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(0,255,200,.14);
+    border-radius: 3px;
+    font-size: 12.5px;
+    color: #9fe6d6;
+  }
+  .settings .row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 0;
+  }
+  .settings .row + .row { border-top: 1px dashed rgba(0,255,200,.1); }
+  .settings label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .settings input[type="number"] {
+    width: 64px;
+    padding: 5px 7px;
+    font: 600 13px ui-monospace, Menlo, Consolas, monospace;
+    color: #e8fff9;
+    background: rgba(0,0,0,.5);
+    border: 1px solid rgba(0,255,200,.3);
+    border-radius: 2px;
+    outline: none;
+  }
+  .settings input[type="number"]:focus { border-color: #00ffc8; }
+  .settings input[type="checkbox"] {
+    width: 15px; height: 15px; accent-color: #00ffc8; cursor: pointer;
+  }
+  .settings .tip { margin-top: 8px; font-size: 11px; line-height: 1.6; color: #5f9c8f; }
 
-        .btn {
-            display: block;
-            width: 100%;
-            padding: 15px;
-            margin-bottom: 14px;
-            border-radius: 12px;
-            border: none;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.25s ease;
-            text-decoration: none;
-        }
+  #startBtn, #retryBtn, #switchBtn {
+    appearance: none; cursor: pointer;
+    padding: 13px 26px;
+    font: 600 14px/1 ui-monospace, Menlo, Consolas, monospace;
+    letter-spacing: 2px;
+    color: #04120e;
+    background: linear-gradient(180deg, #5cffdb, #00e0b0);
+    border: 0; border-radius: 2px;
+    box-shadow: 0 0 24px rgba(0,255,200,.45);
+    transition: transform .15s ease, box-shadow .15s ease, opacity .2s;
+    margin: 0 4px;
+  }
+  #startBtn:hover, #retryBtn:hover, #switchBtn:hover { transform: translateY(-1px); box-shadow: 0 0 34px rgba(0,255,200,.7); }
+  #startBtn:active, #retryBtn:active, #switchBtn:active { transform: translateY(1px); }
+  #startBtn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+  #retryBtn { display: none; margin-top: 14px; }
+  #switchBtn { display: none; margin-top: 14px; background: linear-gradient(180deg, #7dffb0, #22c97a); }
 
-        .btn-gold {
-            background: linear-gradient(135deg, #b8860b, #d4af37);
-            color: #000;
-        }
-        .btn-gold:hover {
-            filter: brightness(1.15);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 18px #d4af3735;
-        }
+  .hint {
+    margin: 16px 0 0;
+    font-size: 11.5px; line-height: 1.7; color: #5f9c8f;
+    min-height: 2em;
+  }
 
-        .btn-dark {
-            background: transparent;
-            border: 1px solid #d4af3770;
-            color: #d4af37;
-        }
-        .btn-dark:hover {
-            background-color: #d4af3715;
-            transform: translateY(-2px);
-        }
+  .error-box {
+    display: none;
+    margin: 16px 0 0;
+    padding: 14px 16px;
+    text-align: left;
+    font-size: 13px; line-height: 1.75;
+    color: #ffb4b4;
+    background: rgba(255, 60, 60, .1);
+    border: 1px solid rgba(255, 90, 90, .45);
+    border-radius: 3px;
+  }
+  .error-box.show { display: block; }
+  .error-box strong { color: #ff6b6b; }
+  .error-box code {
+    background: rgba(255,255,255,.12);
+    padding: 1px 5px; border-radius: 2px;
+    font-size: 12px;
+    color: #ffd9d9;
+  }
 
-        .card-key-wrap {
-            background: #1a1a22;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 25px 0;
-            border: 1px solid #d4af3730;
-        }
-
-        .key-text {
-            color: #fff;
-            font-size: 15px;
-            word-break: break-all;
-            margin-bottom: 12px;
-        }
-
-        .key-label {
-            color: #d4af37;
-            font-size: 13px;
-            margin-bottom: 6px;
-        }
-
-        .copyright {
-            margin-top: 30px;
-            color: #666;
-            font-size: 12px;
-        }
-
-        .toast {
-            position: fixed;
-            top: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #d4af37;
-            color: #000;
-            padding: 10px 22px;
-            border-radius: 8px;
-            font-size: 14px;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.3s;
-        }
-        .toast.show {
-            opacity: 1;
-        }
-    </style>
+  .diag {
+    display: none;
+    margin-top: 12px;
+    padding: 10px 12px;
+    text-align: left;
+    font: 11px/1.65 ui-monospace, Menlo, Consolas, monospace;
+    color: #6fae9f;
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(0,255,200,.12);
+    border-radius: 3px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .diag.show { display: block; }
+</style>
 </head>
 <body>
-    <div class="toast" id="toast">复制成功！</div>
 
-    <div class="main-card">
-        <!-- ====== 和HTML同级的图片logo，修改文件名即可 ====== -->
-        <div class="logo-box">
-            <img src="山海.jpg" alt="中野一花 Logo">
-        </div>
+<div id="stage">
+  <video id="video" playsinline webkit-playsinline muted autoplay></video>
+  <canvas id="overlay"></canvas>
 
-        <h1 class="project-title">中野一花</h1>
-        <p class="project-sub">安卓工具 · 云端更新 · 卡密授权系统</p>
-
-        <!-- 卡密区域 -->
-        <div class="card-key-wrap">
-            <div class="key-label">试用/授权卡密（一键复制）</div>
-            <div class="key-text" id="authKey">暂时不存在卡密</div>
-            <button class="btn btn-dark" onclick="copyKey()">一键复制卡密</button>
-        </div>
-
-        <!-- 【修改下方href里的链接】 -->
-        <a href="https://1860552318.share.123pan.cn/123pan/M8K5vd-iCFev?pwd=ZYYH#" class="btn btn-gold" target="_blank">下载最新安装包</a>
-        <a href="https://t.me/ZYYHNB" class="btn btn-dark" target="_blank">跳转 Telegram 官方频道</a>
-        <a href="https://qun.qq.com/universal-share/share?ac=1&authKey=7FR7X1z6MM6WLS6Ae%2BJsWZXbOUQwp191GMIQuqLRzNYr%2BNl8eDhuHDDHx3Bi%2FemS&busi_data=eyJncm91cENvZGUiOiIyODA3ODU1MDciLCJ0b2tlbiI6IjNUUmRhcjV6cExLTXJnNWd2dTUyZ0E1WlhzaWlxQWw3cjZLT1VEbkVOcDlYalRkZ0FyamFNWEcxSGVDL0o1bXMiLCJ1aW4iOiIyNzAyODAwOTUzIn0%3D&data=ltvaPlNOhrvZNs5bBcTI3LFHxbwoniZx3yOCEIJygv_ToFYGeyZqfbypO3mWolcp7FDvOsylHK-RbO4ZEg76-w&svctype=4&tempid=h5_group_info" class="btn btn-dark" target="_blank">跳转 QQ 交流群</a>
-
-        <div class="copyright">
-            © 2026 中野一花 所有权归属：山海&槿夕
-        </div>
+  <div id="hud">
+    <div class="hud-bar">
+      <span class="badge">
+        <i class="dot" id="statusDot"></i><span id="status">待启动</span>
+        <span id="camInfo"></span>
+      </span>
+      <span class="hud-right">
+        <span id="stats">—</span>
+        <button id="settingsBtn" title="设置">⚙</button>
+      </span>
     </div>
+  </div>
 
-    <script>
-        function copyKey() {
-            const keyDom = document.getElementById('authKey');
-            const keyStr = keyDom.innerText;
-            navigator.clipboard.writeText(keyStr).then(showToast).catch(()=>{
-                const input = document.createElement('input');
-                input.value = keyStr;
-                document.body.appendChild(input);
-                input.select();
-                document.execCommand('copy');
-                document.body.removeChild(input);
-                showToast();
-            });
-        }
+  <div id="recoverBanner">
+    <div class="spin"></div>
+    <div id="recoverText">摄像头信号中断，正在自动恢复…</div>
+  </div>
 
-        function showToast() {
-            const toast = document.getElementById('toast');
-            toast.classList.add('show');
-            setTimeout(()=>toast.classList.remove('show'),1500);
+  <div id="gate">
+    <div class="panel">
+      <h1 id="panelTitle">AI 视觉外挂</h1>
+      <p class="sub" id="panelSub">后置摄像头 · 人 / 动物 / 车辆 · 自动恢复</p>
+
+      <div class="settings">
+        <div class="row">
+          <label>水平视场角 FOV&nbsp;<input id="fovInput" type="number" min="30" max="150" step="1" value="66" />&nbsp;°</label>
+        </div>
+        <div class="row">
+          <label><input id="enhanceInput" type="checkbox" checked /> 增强远距离检测（中心区域放大）</label>
+        </div>
+        <div class="row">
+          <label><input id="distInput" type="checkbox" checked /> 显示距离估算</label>
+        </div>
+        <div class="tip">FOV 默认 66°，手机后置主摄常见 65–70°。检测频率自适应，优先保证画面流畅。</div>
+      </div>
+
+      <button id="startBtn">启动后置摄像头</button>
+      <button id="retryBtn">重新尝试</button>
+      <button id="switchBtn">切换到前置</button>
+
+      <div class="error-box" id="errorBox"></div>
+      <div class="diag" id="diag"></div>
+
+      <p class="hint" id="hint">需要 HTTPS 或 localhost · 首次加载模型约 10–25 秒</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ============================================================
+     元素
+  ============================================================ */
+  const stage     = document.getElementById('stage');
+  const video     = document.getElementById('video');
+  const canvas    = document.getElementById('overlay');
+  const ctx       = canvas.getContext('2d', { alpha: true, desynchronized: true });
+  const gate      = document.getElementById('gate');
+  const panelTitle= document.getElementById('panelTitle');
+  const panelSub  = document.getElementById('panelSub');
+  const startBtn  = document.getElementById('startBtn');
+  const retryBtn  = document.getElementById('retryBtn');
+  const switchBtn = document.getElementById('switchBtn');
+  const statusEl  = document.getElementById('status');
+  const statusDot = document.getElementById('statusDot');
+  const statsEl   = document.getElementById('stats');
+  const camInfo   = document.getElementById('camInfo');
+  const hintEl    = document.getElementById('hint');
+  const errorBox  = document.getElementById('errorBox');
+  const diagEl    = document.getElementById('diag');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const fovInput     = document.getElementById('fovInput');
+  const enhanceInput = document.getElementById('enhanceInput');
+  const distInput    = document.getElementById('distInput');
+  const recoverBanner = document.getElementById('recoverBanner');
+  const recoverText   = document.getElementById('recoverText');
+
+  /* ============================================================
+     类别配置
+  ============================================================ */
+  const TARGETS = {
+    person:     { label: '人',     color: '#00ffc8' },
+    bicycle:    { label: '自行车', color: '#ffe14d' },
+    motorcycle: { label: '摩托车', color: '#ffe14d' },
+    car:        { label: '小汽车', color: '#ff9500' },
+    bus:        { label: '公交车', color: '#ff4d4d' },
+    truck:      { label: '卡车',   color: '#ff4d4d' },
+    train:      { label: '火车',   color: '#ff4d4d' },
+    airplane:   { label: '飞机',   color: '#4da6ff' },
+    boat:       { label: '船',     color: '#4da6ff' },
+    cat:        { label: '猫',     color: '#ff6bcb' },
+    dog:        { label: '狗',     color: '#ff6bcb' },
+    bird:       { label: '鸟',     color: '#ff6bcb' },
+    horse:      { label: '马',     color: '#8fff6b' },
+    sheep:      { label: '羊',     color: '#8fff6b' },
+    cow:        { label: '牛',     color: '#8fff6b' },
+    elephant:   { label: '大象',   color: '#8fff6b' },
+    bear:       { label: '熊',     color: '#8fff6b' },
+    zebra:      { label: '斑马',   color: '#8fff6b' },
+    giraffe:    { label: '长颈鹿', color: '#8fff6b' },
+  };
+
+  const REAL_HEIGHT = {
+    person: 1.70, bicycle: 1.05, motorcycle: 1.15, car: 1.50,
+    bus: 3.20, truck: 3.20, train: 3.80, airplane: 8.00, boat: 2.50,
+    cat: 0.35, dog: 0.55, bird: 0.15,
+    horse: 1.60, sheep: 0.90, cow: 1.40,
+    elephant: 2.50, bear: 1.20, zebra: 1.40, giraffe: 4.50,
+  };
+
+  const CONF_THRESHOLD = 0.28;
+  const MAX_BOXES      = 30;
+  const MAX_MISS       = 5;
+  const NMS_IOU        = 0.5;
+  const MAX_DRAW       = 24;
+
+  const DEFAULT_SETTINGS = { fovDeg: 66, enhance: true, showDist: true };
+  let settings = { ...DEFAULT_SETTINGS };
+  try {
+    const saved = JSON.parse(localStorage.getItem('aiVision.settings') || 'null');
+    if (saved && typeof saved === 'object') settings = { ...DEFAULT_SETTINGS, ...saved };
+  } catch (e) {}
+  fovInput.value = settings.fovDeg;
+  enhanceInput.checked = settings.enhance;
+  distInput.checked = settings.showDist;
+
+  /* ============================================================
+     状态
+  ============================================================ */
+  let W = 0, H = 0, dpr = 1;
+  let model = null;
+  let running = false;
+  let gateMode = 'start';
+  let currentFacing = 'environment';
+  let currentStream = null;
+  let focalPx = 1000;
+
+  let tracks = [];
+  let trackId = 0;
+
+  // 检测调度
+  let detectTimer = null;
+  let detectBusy = false;
+  let detectInterval = 50;
+  let detectCount = 0;
+  let detectFps = 0, lastDetectAt = 0;
+
+  // 渲染统计
+  let renderFps = 0, frames = 0, lastFpsAt = performance.now();
+  let lastHudAt = 0;
+  let lastRenderAt = performance.now();
+  let scanPhase = 0;
+
+  // 自恢复
+  let recovering = false;
+  let recoverAttempts = 0;
+  let recoverTimer = null;
+  let trackEndedHandler = null;
+  let lastFrameTime = 0;
+  let frameWatchdog = null;
+  const MAX_RECOVER_ATTEMPTS = 5;
+  const RECOVER_BASE_DELAY = 1200;
+  const FRAME_STALL_MS = 4000;
+
+  const enhanceCanvas = document.createElement('canvas');
+  const enhanceCtx = enhanceCanvas.getContext('2d');
+
+  /* ============================================================
+     扫描线预渲染
+  ============================================================ */
+  const scanCanvas = document.createElement('canvas');
+  scanCanvas.width = 2;
+  scanCanvas.height = 70;
+  {
+    const sc = scanCanvas.getContext('2d');
+    const g = sc.createLinearGradient(0, 0, 0, 70);
+    g.addColorStop(0, 'rgba(0,255,200,0)');
+    g.addColorStop(1, 'rgba(0,255,200,0.09)');
+    sc.fillStyle = g;
+    sc.fillRect(0, 0, 2, 70);
+  }
+
+  /* ============================================================
+     标签缓存
+  ============================================================ */
+  const labelCache = new Map();
+  let labelCacheDpr = 0;
+  const measureCanvas = document.createElement('canvas');
+  const measureCtx = measureCanvas.getContext('2d');
+  const LABEL_FONT = '600 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+
+  function getLabel(text, color) {
+    const dprNow = Math.min(window.devicePixelRatio || 1, 2);
+    if (dprNow !== labelCacheDpr) {
+      labelCache.clear();
+      labelCacheDpr = dprNow;
+    }
+    const key = text + '|' + color;
+    const hit = labelCache.get(key);
+    if (hit) return hit;
+
+    measureCtx.font = LABEL_FONT;
+    const tw = measureCtx.measureText(text).width;
+    const padX = 8, bh = 21, cut = 6;
+    const w = Math.ceil(tw + padX * 2 + 4);
+    const h = bh;
+
+    const c = document.createElement('canvas');
+    c.width = Math.ceil(w * dprNow);
+    c.height = Math.ceil(h * dprNow);
+    const cc = c.getContext('2d');
+    cc.scale(dprNow, dprNow);
+
+    cc.fillStyle = color;
+    cc.beginPath();
+    cc.moveTo(0, 0);
+    cc.lineTo(w - cut, 0);
+    cc.lineTo(w, cut);
+    cc.lineTo(w, h);
+    cc.lineTo(0, h);
+    cc.closePath();
+    cc.fill();
+
+    cc.fillStyle = '#04120e';
+    cc.font = LABEL_FONT;
+    cc.textBaseline = 'middle';
+    cc.fillText(text, padX, h / 2 + 0.5);
+
+    const item = { canvas: c, w, h };
+    if (labelCache.size > 400) labelCache.clear();
+    labelCache.set(key, item);
+    return item;
+  }
+
+  /* ============================================================
+     工具
+  ============================================================ */
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  function iou(a, b) {
+    const ax2 = a[0] + a[2], ay2 = a[1] + a[3];
+    const bx2 = b[0] + b[2], by2 = b[1] + b[3];
+    const x1 = Math.max(a[0], b[0]);
+    const y1 = Math.max(a[1], b[1]);
+    const x2 = Math.min(ax2, bx2);
+    const y2 = Math.min(ay2, by2);
+    const w = Math.max(0, x2 - x1), h = Math.max(0, y2 - y1);
+    const inter = w * h;
+    const uni = a[2] * a[3] + b[2] * b[3] - inter;
+    return uni > 0 ? inter / uni : 0;
+  }
+
+  const centerDist = (a, b) => {
+    const ax = a[0] + a[2] / 2, ay = a[1] + a[3] / 2;
+    const bx = b[0] + b[2] / 2, by = b[1] + b[3] / 2;
+    return Math.hypot(ax - bx, ay - by);
+  };
+
+  const lerpBox = (a, b, t) => [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+    a[3] + (b[3] - a[3]) * t,
+  ];
+
+  function computeFocal() {
+    const vw = video.videoWidth || 1280;
+    const vh = video.videoHeight || 720;
+    const longSide = Math.max(vw, vh);
+    const fov = settings.fovDeg || 66;
+    focalPx = longSide / (2 * Math.tan((fov * Math.PI) / 360));
+  }
+
+  /* ============================================================
+     尺寸
+  ============================================================ */
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = r.width || window.innerWidth;
+    H = r.height || window.innerHeight;
+    canvas.width  = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width  = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+  resize();
+
+  /* ============================================================
+     状态显示
+  ============================================================ */
+  function setStatus(text, level) {
+    statusEl.textContent = text;
+    statusDot.className = 'dot' + (level ? ' ' + level : '');
+  }
+
+  function showRecoverBanner(text) {
+    recoverText.textContent = text;
+    recoverBanner.classList.add('show');
+  }
+
+  function hideRecoverBanner() {
+    recoverBanner.classList.remove('show');
+  }
+
+  /* ============================================================
+     诊断 / 错误
+  ============================================================ */
+  function collectDiag() {
+    const lines = [];
+    lines.push(`协议: ${location.protocol}  |  主机: ${location.hostname || '(空)'}`);
+    lines.push(`isSecureContext: ${window.isSecureContext}`);
+    lines.push(`navigator.mediaDevices: ${navigator.mediaDevices ? '✓' : '✗'}`);
+    lines.push(`video: ${video.videoWidth}×${video.videoHeight} readyState=${video.readyState}`);
+    if (currentStream) {
+      const t = currentStream.getVideoTracks()[0];
+      if (t) {
+        const s = t.getSettings ? t.getSettings() : {};
+        lines.push(`track: label="${t.label}" readyState=${t.readyState} facingMode=${s.facingMode || '?'}`);
+      }
+    }
+    lines.push(`FOV=${settings.fovDeg}° focalPx=${Math.round(focalPx)}`);
+    lines.push(`detectInterval=${Math.round(detectInterval)}ms detectFps=${detectFps.toFixed(1)} renderFps=${renderFps}`);
+    lines.push(`recovering=${recovering} attempts=${recoverAttempts}`);
+    lines.push(`UA: ${navigator.userAgent.slice(0, 95)}`);
+    return lines.join('\n');
+  }
+
+  function showError(html) {
+    errorBox.innerHTML = html;
+    errorBox.classList.add('show');
+    retryBtn.style.display = 'inline-block';
+    startBtn.style.display = 'none';
+    diagEl.textContent = collectDiag();
+    diagEl.classList.add('show');
+    setStatus('启动失败', 'error');
+  }
+
+  function clearError() {
+    errorBox.classList.remove('show');
+    errorBox.innerHTML = '';
+    diagEl.classList.remove('show');
+    retryBtn.style.display = 'none';
+    startBtn.style.display = '';
+  }
+
+  /* ============================================================
+     设置
+  ============================================================ */
+  function applySettings() {
+    const fov = clamp(parseFloat(fovInput.value) || 66, 30, 150);
+    fovInput.value = fov;
+    settings.fovDeg = fov;
+    settings.enhance = !!enhanceInput.checked;
+    settings.showDist = !!distInput.checked;
+    try { localStorage.setItem('aiVision.settings', JSON.stringify(settings)); } catch (e) {}
+    computeFocal();
+  }
+
+  function openSettings() {
+    if (!running) return;
+    gateMode = 'settings';
+    gate.classList.remove('hidden');
+    panelTitle.textContent = '设置';
+    panelSub.textContent = '调整后点击下方按钮立即生效';
+    startBtn.textContent = '应用并返回';
+    startBtn.style.display = '';
+    retryBtn.style.display = 'none';
+    switchBtn.style.display = 'none';
+    clearError();
+  }
+
+  function closeSettings() {
+    gateMode = 'start';
+    gate.classList.add('hidden');
+    panelTitle.textContent = 'AI 视觉外挂';
+    panelSub.textContent = '后置摄像头 · 人 / 动物 / 车辆 · 自动恢复';
+    startBtn.textContent = '启动后置摄像头';
+    switchBtn.textContent = currentFacing === 'environment' ? '切换到前置' : '切换到后置';
+  }
+
+  /* ============================================================
+     摄像头（后置优先）
+  ============================================================ */
+  async function openCamera(facing) {
+    const want = facing === 'user' ? 'user' : 'environment';
+    const base = { width: { ideal: 1280 }, height: { ideal: 720 } };
+
+    const attempts = want === 'environment' ? [
+      { video: { facingMode: { exact: 'environment' }, ...base }, audio: false },
+      { video: { facingMode: { ideal: 'environment' }, ...base }, audio: false },
+      { video: base, audio: false },
+    ] : [
+      { video: { facingMode: { exact: 'user' }, ...base }, audio: false },
+      { video: { facingMode: { ideal: 'user' }, ...base }, audio: false },
+      { video: base, audio: false },
+    ];
+
+    let lastErr = null;
+    for (let i = 0; i < attempts.length; i++) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(attempts[i]);
+        const track = stream.getVideoTracks()[0];
+        const s = track.getSettings ? track.getSettings() : {};
+        return { stream, gotFacing: s.facingMode || '', attempt: i + 1 };
+      } catch (e) {
+        lastErr = e;
+        console.warn(`[camera] attempt#${i + 1} failed:`, e.name, e.message);
+      }
+    }
+    throw lastErr;
+  }
+
+  function stopCurrentStream() {
+    if (trackEndedHandler && currentStream) {
+      const t = currentStream.getVideoTracks()[0];
+      if (t) t.removeEventListener('ended', trackEndedHandler);
+    }
+    trackEndedHandler = null;
+
+    if (currentStream) {
+      currentStream.getTracks().forEach((t) => t.stop());
+      currentStream = null;
+    }
+    video.srcObject = null;
+  }
+
+  function updateCamInfo(gotFacing, attempt) {
+    let text;
+    if (gotFacing === 'environment') {
+      text = '· 后置';
+      video.classList.remove('mirrored');
+      currentFacing = 'environment';
+    } else if (gotFacing === 'user') {
+      text = '· 前置';
+      video.classList.add('mirrored');
+      currentFacing = 'user';
+    } else {
+      text = '· 默认摄像头';
+      video.classList.remove('mirrored');
+      currentFacing = 'environment';
+    }
+    if (attempt > 1) text += ` (回退#${attempt})`;
+    camInfo.textContent = text;
+  }
+
+  /* ============================================================
+     NMS
+  ============================================================ */
+  function nms(dets, iouThresh) {
+    const groups = new Map();
+    for (const d of dets) {
+      if (!groups.has(d.class)) groups.set(d.class, []);
+      groups.get(d.class).push(d);
+    }
+    const out = [];
+    for (const list of groups.values()) {
+      list.sort((a, b) => b.score - a.score);
+      const picked = [];
+      for (const d of list) {
+        let keep = true;
+        for (const p of picked) {
+          if (iou(d.bbox, p.bbox) > iouThresh) { keep = false; break; }
         }
-    </script>
+        if (keep) picked.push(d);
+      }
+      out.push(...picked);
+    }
+    return out;
+  }
+
+  /* ============================================================
+     跟踪器
+  ============================================================ */
+  function updateTracks(dets) {
+    const used = new Set();
+    const next = [];
+
+    for (const t of tracks) {
+      let best = -1, bestDist = Infinity;
+      for (let i = 0; i < dets.length; i++) {
+        if (used.has(i)) continue;
+        const d = dets[i];
+        if (d.class !== t.class) continue;
+        const size = Math.max(Math.min(t.bbox[2], t.bbox[3]), 14);
+        const dist = centerDist(t.bbox, d.bbox) / size;
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      }
+      if (best >= 0 && bestDist < 1.4) {
+        used.add(best);
+        const d = dets[best];
+        next.push({
+          id: t.id,
+          class: t.class,
+          score: t.score * 0.3 + d.score * 0.7,
+          bbox: lerpBox(t.bbox, d.bbox, 0.6),
+          renderBbox: t.renderBbox || null,
+          miss: 0,
+          hits: (t.hits || 0) + 1,
+        });
+      } else if (t.miss < MAX_MISS) {
+        next.push({ ...t, miss: t.miss + 1 });
+      }
+    }
+
+    for (let i = 0; i < dets.length; i++) {
+      if (used.has(i)) continue;
+      const d = dets[i];
+      next.push({
+        id: ++trackId,
+        class: d.class,
+        score: d.score,
+        bbox: d.bbox.slice(),
+        renderBbox: null,
+        miss: 0,
+        hits: 1,
+      });
+    }
+
+    tracks = next;
+  }
+
+  /* ============================================================
+     检测调度
+  ============================================================ */
+  function scheduleDetect() {
+    if (!running || detectTimer || detectBusy) return;
+    detectTimer = setTimeout(runDetect, 0);
+  }
+
+  async function runDetect() {
+    detectTimer = null;
+    if (!running) return;
+    if (detectBusy || document.hidden || video.readyState < 2) {
+      if (running) scheduleDetect();
+      return;
+    }
+
+    detectBusy = true;
+    const t0 = performance.now();
+    try {
+      await doDetect();
+    } catch (e) {
+      console.warn('[detect]', e);
+    } finally {
+      detectBusy = false;
+      const elapsed = performance.now() - t0;
+
+      const now = performance.now();
+      if (lastDetectAt) {
+        const dt = now - lastDetectAt;
+        if (dt > 0 && dt < 3000) {
+          const inst = 1000 / dt;
+          detectFps = detectFps ? detectFps * 0.7 + inst * 0.3 : inst;
+        }
+      }
+      lastDetectAt = now;
+
+      if (running) {
+        const wait = Math.max(16, detectInterval - elapsed);
+        detectTimer = setTimeout(() => {
+          detectTimer = null;
+          runDetect();
+        }, wait);
+      }
+    }
+  }
+
+  async function doDetect() {
+    detectCount++;
+    const preds = [];
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return;
+
+    try {
+      const full = await model.detect(video, MAX_BOXES, CONF_THRESHOLD);
+      preds.push(...full);
+    } catch (e) {
+      console.warn('[detect full]', e);
+    }
+
+    if (settings.enhance && vw > 480 && detectCount % 3 === 0) {
+      const rx = Math.floor(vw * 0.15);
+      const ry = Math.floor(vh * 0.05);
+      const rw = Math.floor(vw * 0.70);
+      const rh = Math.floor(vh * 0.70);
+
+      const maxSide = 800;
+      const k = Math.min(maxSide / Math.max(rw, rh), 3);
+      const cw = Math.max(64, Math.round(rw * k));
+      const ch = Math.max(64, Math.round(rh * k));
+
+      if (enhanceCanvas.width !== cw || enhanceCanvas.height !== ch) {
+        enhanceCanvas.width = cw;
+        enhanceCanvas.height = ch;
+      }
+
+      try {
+        enhanceCtx.drawImage(video, rx, ry, rw, rh, 0, 0, cw, ch);
+        const regionPreds = await model.detect(enhanceCanvas, MAX_BOXES, CONF_THRESHOLD);
+        const kx = rw / cw;
+        const ky = rh / ch;
+        for (const p of regionPreds) {
+          preds.push({
+            class: p.class,
+            score: p.score,
+            bbox: [
+              p.bbox[0] * kx + rx,
+              p.bbox[1] * ky + ry,
+              p.bbox[2] * kx,
+              p.bbox[3] * ky,
+            ],
+          });
+        }
+      } catch (e) {
+        console.warn('[detect region]', e);
+      }
+    }
+
+    const filtered = preds.filter(
+      (p) => TARGETS[p.class] && p.score >= CONF_THRESHOLD
+    );
+    const merged = nms(filtered, NMS_IOU);
+    updateTracks(merged);
+  }
+
+  /* ============================================================
+     绘制
+  ============================================================ */
+  function drawScanline(dt) {
+    scanPhase = (scanPhase + dt * 0.00027) % 1;
+    const y = scanPhase * H;
+    ctx.drawImage(scanCanvas, 0, y - 70, W, 70);
+  }
+
+  function drawCorners(x, y, w, h, L) {
+    ctx.beginPath();
+    ctx.moveTo(x, y + L);         ctx.lineTo(x, y);         ctx.lineTo(x + L, y);
+    ctx.moveTo(x + w - L, y);     ctx.lineTo(x + w, y);     ctx.lineTo(x + w, y + L);
+    ctx.moveTo(x + w, y + h - L); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - L, y + h);
+    ctx.moveTo(x + L, y + h);     ctx.lineTo(x, y + h);     ctx.lineTo(x, y + h - L);
+    ctx.stroke();
+  }
+
+  function buildLabelText(track, conf) {
+    const pct = Math.max(1, Math.round(track.score * 20) * 5);
+    let text = `${conf.label} ${pct}%`;
+    if (settings.showDist) {
+      const realH = REAL_HEIGHT[track.class];
+      if (realH) {
+        const rb = track.renderBbox || track.bbox;
+        const bboxH = rb[3];
+        if (bboxH > 6) {
+          const d = (focalPx * realH) / bboxH;
+          const q = d < 10 ? Math.round(d * 2) / 2 : Math.round(d);
+          text += ` ≈${q}m`;
+        }
+      }
+    }
+    return text;
+  }
+
+  function drawTarget(x, y, w, h, conf, track) {
+    const color = conf.color;
+    const alpha = track.miss > 0 ? Math.max(0.2, 1 - track.miss * 0.18) : 1;
+    const L = Math.max(8, Math.min(w, h) * 0.22);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.globalAlpha = alpha * 0.12;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 7;
+    drawCorners(x, y, w, h, L);
+
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 2.2;
+    drawCorners(x, y, w, h, L);
+
+    ctx.globalAlpha = alpha * 0.32;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.globalAlpha = alpha * 0.06;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y + h + 3, w * track.score, 2);
+
+    const label = getLabel(buildLabelText(track, conf), color);
+    let lx = x;
+    let ly = y - label.h - 6;
+    if (ly < 0) ly = y + 6;
+    lx = clamp(lx, 0, W - label.w);
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(label.canvas, lx, ly, label.w, label.h);
+  }
+
+  function updateRenderBboxes(dt) {
+    const alpha = dt > 50 ? 1 : (1 - Math.exp(-dt / 70));
+    for (const t of tracks) {
+      if (!t.renderBbox) {
+        t.renderBbox = t.bbox.slice();
+        continue;
+      }
+      const r = t.renderBbox, b = t.bbox;
+      r[0] += (b[0] - r[0]) * alpha;
+      r[1] += (b[1] - r[1]) * alpha;
+      r[2] += (b[2] - r[2]) * alpha;
+      r[3] += (b[3] - r[3]) * alpha;
+    }
+  }
+
+  function render(now) {
+    requestAnimationFrame(render);
+    const dt = Math.min(now - lastRenderAt, 100);
+    lastRenderAt = now;
+
+    ctx.clearRect(0, 0, W, H);
+
+    frames++;
+    if (now - lastFpsAt >= 500) {
+      renderFps = Math.round((frames * 1000) / (now - lastFpsAt));
+      frames = 0;
+      lastFpsAt = now;
+
+      if (running && model) {
+        if (renderFps < 48) detectInterval = Math.min(150, detectInterval + 15);
+        else if (renderFps > 57) detectInterval = Math.max(38, detectInterval - 6);
+      }
+    }
+
+    if (!running) return;
+
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return;
+
+    drawScanline(dt);
+    updateRenderBboxes(dt);
+
+    const scale = Math.max(W / vw, H / vh);
+    const dw = vw * scale, dh = vh * scale;
+    const ox = (W - dw) / 2, oy = (H - dh) / 2;
+    const mirrored = currentFacing === 'user';
+
+    let list = tracks;
+    if (tracks.length > MAX_DRAW) {
+      list = tracks.slice().sort((a, b) => b.score - a.score).slice(0, MAX_DRAW);
+    }
+
+    let visible = 0;
+    for (const t of list) {
+      const conf = TARGETS[t.class];
+      if (!conf) continue;
+      const rb = t.renderBbox || t.bbox;
+      const [bx, by, bw, bh] = rb;
+      let x = bx * scale + ox;
+      const y = by * scale + oy;
+      const w = bw * scale;
+      const h = bh * scale;
+      if (mirrored) x = W - x - w;
+      if (w < 5 || h < 5) continue;
+      visible++;
+      drawTarget(x, y, w, h, conf, t);
+    }
+    ctx.globalAlpha = 1;
+
+    if (now - lastHudAt > 250) {
+      lastHudAt = now;
+      statsEl.textContent =
+        `目标 ${visible} · 检测 ${detectFps.toFixed(0)}fps · 渲染 ${renderFps}fps`;
+    }
+  }
+  requestAnimationFrame(render);
+
+  /* ============================================================
+     摄像头健康监控与自动恢复
+  ============================================================ */
+  function attachTrackListener(stream) {
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+
+    if (trackEndedHandler) track.removeEventListener('ended', trackEndedHandler);
+
+    trackEndedHandler = () => {
+      console.warn('[camera] track ended unexpectedly');
+      if (!running || recovering) return;
+      triggerRecover('摄像头轨道意外结束');
+    };
+    track.addEventListener('ended', trackEndedHandler);
+
+    track.addEventListener('mute', () => {
+      console.warn('[camera] track muted');
+    });
+    track.addEventListener('unmute', () => {
+      console.log('[camera] track unmuted');
+    });
+  }
+
+  function startFrameWatchdog() {
+    stopFrameWatchdog();
+    lastFrameTime = performance.now();
+
+    // 用 requestVideoFrameCallback 精确感知“视频是否还在出新帧”
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      const onVideoFrame = () => {
+        lastFrameTime = performance.now();
+        if (running) video.requestVideoFrameCallback(onVideoFrame);
+      };
+      video.requestVideoFrameCallback(onVideoFrame);
+    }
+
+    frameWatchdog = setInterval(() => {
+      if (!running || recovering) return;
+      if (document.hidden) {
+        lastFrameTime = performance.now();
+        return;
+      }
+      const silence = performance.now() - lastFrameTime;
+      if (silence > FRAME_STALL_MS) {
+        console.warn('[camera] no video frames for', Math.round(silence), 'ms');
+        triggerRecover('画面长时间无新帧');
+      }
+    }, 1000);
+  }
+
+  function stopFrameWatchdog() {
+    if (frameWatchdog) {
+      clearInterval(frameWatchdog);
+      frameWatchdog = null;
+    }
+  }
+
+  function triggerRecover(reason) {
+    if (recovering || !running) return;
+    recovering = true;
+    recoverAttempts = 0;
+    setStatus('信号中断，恢复中…', 'warn');
+    showRecoverBanner(reason + '，正在自动恢复…');
+    doRecover();
+  }
+
+  async function doRecover() {
+    if (!recovering || !running) return;
+
+    recoverAttempts++;
+    if (recoverAttempts > MAX_RECOVER_ATTEMPTS) {
+      recovering = false;
+      hideRecoverBanner();
+      setStatus('恢复失败', 'error');
+      showError(
+        '<strong>摄像头多次尝试恢复失败。</strong><br>' +
+        '这通常意味着摄像头设备被系统或其他应用持续占用，或硬件出现了问题。<br><br>' +
+        '请尝试：<br>' +
+        '• 关闭微信、钉钉、Zoom 等可能占用摄像头的软件<br>' +
+        '• 刷新页面后重新启动<br>' +
+        '• 如果使用手机，锁屏后再解锁重试<br><br>' +
+        '诊断信息：<br><code>' + collectDiag().replace(/\n/g, '<br>') + '</code>'
+      );
+      return;
+    }
+
+    const delay = RECOVER_BASE_DELAY * Math.pow(1.6, recoverAttempts - 1);
+    showRecoverBanner(`正在自动恢复…（第 ${recoverAttempts} 次尝试）`);
+    await sleep(Math.min(delay, 8000));
+
+    if (!recovering || !running) return;
+
+    // 彻底释放旧流
+    stopCurrentStream();
+    tracks = [];
+    trackId = 0;
+
+    try {
+      const { stream, gotFacing, attempt } = await openCamera(currentFacing);
+      currentStream = stream;
+      video.srcObject = stream;
+      video.muted = true;
+
+      attachTrackListener(stream);
+      updateCamInfo(gotFacing, attempt);
+
+      await video.play().catch((e) => console.warn('[recover] play:', e));
+
+      // 等第一帧真正出来再宣告恢复成功
+      const ok = await waitForFirstFrame(4000);
+      if (!ok) throw new Error('recovered stream produced no frames');
+
+      computeFocal();
+      recovering = false;
+      recoverAttempts = 0;
+      hideRecoverBanner();
+      clearError();
+      setStatus('运行中');
+      lastFrameTime = performance.now();
+
+      if (!detectTimer && !detectBusy) runDetect();
+    } catch (err) {
+      console.warn('[recover] attempt failed:', err.name, err.message);
+      // 继续下一轮
+      doRecover();
+    }
+  }
+
+  function waitForFirstFrame(timeoutMs) {
+    return new Promise((resolve) => {
+      let done = false;
+      let timer = null;
+      let rvfcHandle = null;
+
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (rvfcHandle && video.cancelVideoFrameCallback) {
+          try { video.cancelVideoFrameCallback(rvfcHandle); } catch (e) {}
+        }
+        resolve(ok);
+      };
+
+      if (typeof video.requestVideoFrameCallback === 'function') {
+        rvfcHandle = video.requestVideoFrameCallback(() => finish(true));
+      }
+
+      video.addEventListener('playing', () => finish(true), { once: true });
+      video.addEventListener('loadeddata', () => finish(true), { once: true });
+
+      timer = setTimeout(() => finish(false), timeoutMs);
+
+      video.play().catch(() => {});
+    });
+  }
+
+  // 页面可见性变化：切回来时检查摄像头是否还活着
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      lastFrameTime = performance.now();
+      return;
+    }
+    if (!running) return;
+
+    const track = currentStream ? currentStream.getVideoTracks()[0] : null;
+    if (!track || track.readyState === 'ended') {
+      triggerRecover('页面恢复时发现摄像头轨道已结束');
+      return;
+    }
+
+    video.play().catch(() => {});
+    lastFrameTime = performance.now();
+
+    // 稍等一会儿看有没有新帧，没有就恢复
+    setTimeout(() => {
+      if (!running || recovering) return;
+      if (performance.now() - lastFrameTime > 1500) {
+        triggerRecover('页面恢复后画面无新帧');
+      }
+    }, 1800);
+  });
+
+  window.addEventListener('focus', () => {
+    lastFrameTime = performance.now();
+  });
+
+  /* ============================================================
+     启动
+  ============================================================ */
+  async function start(facing) {
+    const want = facing || currentFacing;
+    clearError();
+    hideRecoverBanner();
+    startBtn.disabled = true;
+
+    if (location.protocol === 'file:') {
+      showError(
+        '<strong>检测到你正在用 file:// 协议打开页面（直接双击 HTML）。</strong><br>' +
+        'Chrome / Edge 在 file:// 下会<b>完全禁用摄像头 API</b>，所以画面全黑、摄像头灯不亮。<br><br>' +
+        '<b>解决方法（任选其一）：</b><br>' +
+        '1. 在该 HTML 文件所在目录打开终端，运行 <code>npx serve</code> 或 <code>python -m http.server 8000</code>，' +
+        '然后浏览器访问 <code>http://localhost:8000</code>；<br>' +
+        '2. 使用 VS Code 的 Live Server 插件打开；<br>' +
+        '3. 把文件放到任意 HTTPS 网站访问。'
+      );
+      startBtn.disabled = false;
+      return;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError(
+        '<strong>当前浏览器环境不提供摄像头 API。</strong><br>' +
+        '可能原因：<br>' +
+        '• 不是 HTTPS / localhost 环境（当前协议：<code>' + location.protocol + '</code>）<br>' +
+        '• 微信 / 企业微信 / 支付宝等 App 内置浏览器，或 App WebView 屏蔽了该 API<br>' +
+        '• 浏览器版本过旧<br><br>' +
+        '<b>请改用系统浏览器（Chrome / Edge / Safari）在 HTTPS 或 localhost 下打开。</b>'
+      );
+      startBtn.disabled = false;
+      return;
+    }
+
+    setStatus('请求摄像头…', 'warn');
+    hintEl.textContent = want === 'environment'
+      ? '正在请求后置摄像头，请在弹窗中点击「允许」…'
+      : '正在请求前置摄像头，请在弹窗中点击「允许」…';
+
+    let stream, gotFacing, attempt;
+    try {
+      ({ stream, gotFacing, attempt } = await openCamera(want));
+    } catch (err) {
+      const name = err.name || '';
+      const tips = {
+        NotAllowedError:  '摄像头权限被拒绝。请点击地址栏左侧的锁/设置图标，把「摄像头」改为「允许」，然后刷新页面重试。',
+        NotFoundError:    '系统未检测到摄像头设备。请确认摄像头已连接、驱动正常。',
+        NotReadableError: '摄像头被其他程序占用或硬件故障。请关闭微信、钉钉、Zoom、Teams 等正在使用摄像头的软件后重试。',
+        SecurityError:    '安全策略阻止了摄像头访问。请确认使用 HTTPS 或 localhost。',
+        AbortError:       '浏览器中止了摄像头请求，请重试。',
+        OverconstrainedError: '当前设备不支持所选摄像头朝向（例如桌面电脑没有后置摄像头）。点击「重新尝试」会回退到默认摄像头。',
+      };
+      const msg = tips[name] || ('未知错误：' + (err.message || err));
+      showError('<strong>无法打开摄像头</strong><br>' + msg +
+                '<br><br><b>错误代码：</b><code>' + name + '</code>');
+      startBtn.disabled = false;
+      return;
+    }
+
+    if (currentStream && currentStream !== stream) {
+      currentStream.getTracks().forEach((t) => t.stop());
+    }
+    currentStream = stream;
+    video.srcObject = stream;
+    video.muted = true;
+
+    attachTrackListener(stream);
+    updateCamInfo(gotFacing, attempt);
+
+    hintEl.textContent = '等待视频画面…';
+
+    const started = await new Promise((resolve) => {
+      let done = false;
+      let timer = null;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        video.removeEventListener('playing', onOk);
+        video.removeEventListener('loadeddata', onOk);
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const onOk = () => finish(true);
+      video.addEventListener('playing', onOk);
+      video.addEventListener('loadeddata', onOk);
+      timer = setTimeout(() => {
+        video.play().then(() => finish(true)).catch(() => finish(false));
+      }, 3000);
+      video.play().catch((e) => console.warn('play() rejected:', e));
+    });
+
+    if (!started) {
+      showError(
+        '<strong>摄像头流已获取，但视频没有开始播放。</strong><br>' +
+        '可能原因：<br>' +
+        '• iOS / 部分浏览器要求用户手势才能播放，请再点一次「重新尝试」<br>' +
+        '• 摄像头画面被其他标签页占用<br>' +
+        '• 设备驱动异常<br><br>' +
+        '当前 video 状态：<code>readyState=' + video.readyState + '</code>'
+      );
+      startBtn.disabled = false;
+      return;
+    }
+
+    if (!video.videoWidth || !video.videoHeight) {
+      await sleep(400);
+    }
+    computeFocal();
+
+    if (!model) {
+      setStatus('加载 AI 模型…', 'warn');
+      hintEl.textContent = '正在加载 COCO-SSD（mobilenet_v2）模型，首次约 10–25 秒…';
+      try {
+        if (typeof cocoSsd === 'undefined') {
+          throw new Error('模型库未加载，请检查网络或 CDN 是否可访问');
+        }
+        model = await cocoSsd.load({ base: 'mobilenet_v2' });
+      } catch (err) {
+        showError(
+          '<strong>AI 模型加载失败</strong><br>' +
+          (err.message || err) + '<br><br>' +
+          '请检查网络能否访问 <code>cdn.jsdelivr.net</code>，或在网络良好时重试。'
+        );
+        startBtn.disabled = false;
+        return;
+      }
+    }
+
+    // 重置状态
+    tracks = [];
+    trackId = 0;
+    detectCount = 0;
+    detectInterval = 50;
+    detectFps = 0;
+    lastDetectAt = 0;
+    lastRenderAt = performance.now();
+    lastFpsAt = performance.now();
+    frames = 0;
+    recovering = false;
+    recoverAttempts = 0;
+
+    setStatus('运行中');
+    running = true;
+    resize();
+    closeSettings();
+    clearError();
+    startBtn.disabled = false;
+
+    switchBtn.style.display = 'inline-block';
+    switchBtn.textContent = currentFacing === 'environment' ? '切换到前置' : '切换到后置';
+
+    startFrameWatchdog();
+    runDetect();
+  }
+
+  /* ============================================================
+     切换摄像头
+  ============================================================ */
+  async function switchCamera() {
+    const next = currentFacing === 'environment' ? 'user' : 'environment';
+    running = false;
+    recovering = false;
+    hideRecoverBanner();
+    stopFrameWatchdog();
+    if (detectTimer) { clearTimeout(detectTimer); detectTimer = null; }
+    stopCurrentStream();
+    tracks = [];
+    trackId = 0;
+    gate.classList.remove('hidden');
+    clearError();
+    panelTitle.textContent = 'AI 视觉外挂';
+    panelSub.textContent = '后置摄像头 · 人 / 动物 / 车辆 · 自动恢复';
+    startBtn.textContent = '启动后置摄像头';
+    await start(next);
+  }
+
+  /* ============================================================
+     事件
+  ============================================================ */
+  function onMainButton() {
+    applySettings();
+    if (gateMode === 'settings') {
+      closeSettings();
+      return;
+    }
+    start('environment');
+  }
+
+  startBtn.addEventListener('click', onMainButton);
+  retryBtn.addEventListener('click', () => start(currentFacing || 'environment'));
+  switchBtn.addEventListener('click', switchCamera);
+  settingsBtn.addEventListener('click', openSettings);
+
+  window.addEventListener('beforeunload', () => {
+    running = false;
+    recovering = false;
+    stopFrameWatchdog();
+    if (detectTimer) clearTimeout(detectTimer);
+    stopCurrentStream();
+  });
+
+})();
+</script>
 </body>
 </html>
