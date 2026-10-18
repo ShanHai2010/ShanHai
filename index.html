@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>AI 视觉外挂 · 自恢复 · 60fps</title>
+<title>AI 视觉外挂 · 人 / 车辆</title>
 <style>
   * { box-sizing: border-box; }
   html, body {
@@ -58,7 +58,6 @@
   }
   #settingsBtn:hover { background: rgba(0,255,200,.2); transform: rotate(35deg); }
 
-  /* 恢复提示浮层 */
   #recoverBanner {
     position: absolute; left: 50%; top: 50%;
     transform: translate(-50%, -50%);
@@ -239,7 +238,7 @@
   <div id="gate">
     <div class="panel">
       <h1 id="panelTitle">AI 视觉外挂</h1>
-      <p class="sub" id="panelSub">后置摄像头 · 人 / 动物 / 车辆 · 自动恢复</p>
+      <p class="sub" id="panelSub">后置摄像头 · 人 / 车辆 · 自动恢复</p>
 
       <div class="settings">
         <div class="row">
@@ -301,7 +300,7 @@
   const recoverText   = document.getElementById('recoverText');
 
   /* ============================================================
-     类别配置
+     类别配置：只保留人和陆地车辆
   ============================================================ */
   const TARGETS = {
     person:     { label: '人',     color: '#00ffc8' },
@@ -311,33 +310,23 @@
     bus:        { label: '公交车', color: '#ff4d4d' },
     truck:      { label: '卡车',   color: '#ff4d4d' },
     train:      { label: '火车',   color: '#ff4d4d' },
-    airplane:   { label: '飞机',   color: '#4da6ff' },
-    boat:       { label: '船',     color: '#4da6ff' },
-    cat:        { label: '猫',     color: '#ff6bcb' },
-    dog:        { label: '狗',     color: '#ff6bcb' },
-    bird:       { label: '鸟',     color: '#ff6bcb' },
-    horse:      { label: '马',     color: '#8fff6b' },
-    sheep:      { label: '羊',     color: '#8fff6b' },
-    cow:        { label: '牛',     color: '#8fff6b' },
-    elephant:   { label: '大象',   color: '#8fff6b' },
-    bear:       { label: '熊',     color: '#8fff6b' },
-    zebra:      { label: '斑马',   color: '#8fff6b' },
-    giraffe:    { label: '长颈鹿', color: '#8fff6b' },
   };
 
   const REAL_HEIGHT = {
-    person: 1.70, bicycle: 1.05, motorcycle: 1.15, car: 1.50,
-    bus: 3.20, truck: 3.20, train: 3.80, airplane: 8.00, boat: 2.50,
-    cat: 0.35, dog: 0.55, bird: 0.15,
-    horse: 1.60, sheep: 0.90, cow: 1.40,
-    elephant: 2.50, bear: 1.20, zebra: 1.40, giraffe: 4.50,
+    person: 1.70,
+    bicycle: 1.05,
+    motorcycle: 1.15,
+    car: 1.50,
+    bus: 3.20,
+    truck: 3.20,
+    train: 3.80,
   };
 
-  const CONF_THRESHOLD = 0.28;
-  const MAX_BOXES      = 30;
+  const CONF_THRESHOLD = 0.30;
+  const MAX_BOXES      = 20;
   const MAX_MISS       = 5;
   const NMS_IOU        = 0.5;
-  const MAX_DRAW       = 24;
+  const MAX_DRAW       = 20;
 
   const DEFAULT_SETTINGS = { fovDeg: 66, enhance: true, showDist: true };
   let settings = { ...DEFAULT_SETTINGS };
@@ -379,7 +368,6 @@
   // 自恢复
   let recovering = false;
   let recoverAttempts = 0;
-  let recoverTimer = null;
   let trackEndedHandler = null;
   let lastFrameTime = 0;
   let frameWatchdog = null;
@@ -406,13 +394,13 @@
   }
 
   /* ============================================================
-     标签缓存
+     标签缓存（更紧凑的标签）
   ============================================================ */
   const labelCache = new Map();
   let labelCacheDpr = 0;
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');
-  const LABEL_FONT = '600 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  const LABEL_FONT = '600 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
   function getLabel(text, color) {
     const dprNow = Math.min(window.devicePixelRatio || 1, 2);
@@ -426,8 +414,8 @@
 
     measureCtx.font = LABEL_FONT;
     const tw = measureCtx.measureText(text).width;
-    const padX = 8, bh = 21, cut = 6;
-    const w = Math.ceil(tw + padX * 2 + 4);
+    const padX = 6, bh = 19, cut = 5;
+    const w = Math.ceil(tw + padX * 2 + 3);
     const h = bh;
 
     const c = document.createElement('canvas');
@@ -452,7 +440,7 @@
     cc.fillText(text, padX, h / 2 + 0.5);
 
     const item = { canvas: c, w, h };
-    if (labelCache.size > 400) labelCache.clear();
+    if (labelCache.size > 300) labelCache.clear();
     labelCache.set(key, item);
     return item;
   }
@@ -603,7 +591,7 @@
     gateMode = 'start';
     gate.classList.add('hidden');
     panelTitle.textContent = 'AI 视觉外挂';
-    panelSub.textContent = '后置摄像头 · 人 / 动物 / 车辆 · 自动恢复';
+    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 自动恢复';
     startBtn.textContent = '启动后置摄像头';
     switchBtn.textContent = currentFacing === 'environment' ? '切换到前置' : '切换到后置';
   }
@@ -889,40 +877,54 @@
     return text;
   }
 
+  /**
+   * 绘制目标框：角标长度、线宽根据目标大小自适应，
+   * 整体框大小适中，不粗不重。
+   */
   function drawTarget(x, y, w, h, conf, track) {
     const color = conf.color;
     const alpha = track.miss > 0 ? Math.max(0.2, 1 - track.miss * 0.18) : 1;
-    const L = Math.max(8, Math.min(w, h) * 0.22);
+
+    const base = Math.min(w, h);
+    // 角标长度：目标的 18%，限制在 6~22px
+    const L = clamp(base * 0.18, 6, 22);
+    // 线宽：目标的 1.2%，限制在 1.4~2.4px
+    const lw = clamp(base * 0.012, 1.4, 2.4);
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    ctx.globalAlpha = alpha * 0.12;
+    // 轻光晕（比之前更细）
+    ctx.globalAlpha = alpha * 0.14;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 7;
+    ctx.lineWidth = lw + 2.5;
     drawCorners(x, y, w, h, L);
 
+    // 主线
     ctx.globalAlpha = alpha;
-    ctx.lineWidth = 2.2;
+    ctx.lineWidth = lw;
     drawCorners(x, y, w, h, L);
 
-    ctx.globalAlpha = alpha * 0.32;
+    // 细边框（弱化）
+    ctx.globalAlpha = alpha * 0.25;
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
 
-    ctx.globalAlpha = alpha * 0.06;
+    // 非常淡的填充
+    ctx.globalAlpha = alpha * 0.045;
     ctx.fillStyle = color;
     ctx.fillRect(x, y, w, h);
 
-    ctx.globalAlpha = alpha * 0.8;
+    // 底部置信度条
+    ctx.globalAlpha = alpha * 0.7;
     ctx.fillStyle = color;
-    ctx.fillRect(x, y + h + 3, w * track.score, 2);
+    ctx.fillRect(x, y + h + 2, w * track.score, 2);
 
+    // 标签
     const label = getLabel(buildLabelText(track, conf), color);
-    let lx = x;
-    let ly = y - label.h - 6;
-    if (ly < 0) ly = y + 6;
-    lx = clamp(lx, 0, W - label.w);
+    let lx = clamp(x, 0, W - label.w);
+    let ly = y - label.h - 4;
+    if (ly < 0) ly = y + 4;
     ctx.globalAlpha = alpha;
     ctx.drawImage(label.canvas, lx, ly, label.w, label.h);
   }
@@ -1019,20 +1021,12 @@
       triggerRecover('摄像头轨道意外结束');
     };
     track.addEventListener('ended', trackEndedHandler);
-
-    track.addEventListener('mute', () => {
-      console.warn('[camera] track muted');
-    });
-    track.addEventListener('unmute', () => {
-      console.log('[camera] track unmuted');
-    });
   }
 
   function startFrameWatchdog() {
     stopFrameWatchdog();
     lastFrameTime = performance.now();
 
-    // 用 requestVideoFrameCallback 精确感知“视频是否还在出新帧”
     if (typeof video.requestVideoFrameCallback === 'function') {
       const onVideoFrame = () => {
         lastFrameTime = performance.now();
@@ -1097,7 +1091,6 @@
 
     if (!recovering || !running) return;
 
-    // 彻底释放旧流
     stopCurrentStream();
     tracks = [];
     trackId = 0;
@@ -1113,7 +1106,6 @@
 
       await video.play().catch((e) => console.warn('[recover] play:', e));
 
-      // 等第一帧真正出来再宣告恢复成功
       const ok = await waitForFirstFrame(4000);
       if (!ok) throw new Error('recovered stream produced no frames');
 
@@ -1128,7 +1120,6 @@
       if (!detectTimer && !detectBusy) runDetect();
     } catch (err) {
       console.warn('[recover] attempt failed:', err.name, err.message);
-      // 继续下一轮
       doRecover();
     }
   }
@@ -1162,7 +1153,6 @@
     });
   }
 
-  // 页面可见性变化：切回来时检查摄像头是否还活着
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       lastFrameTime = performance.now();
@@ -1179,7 +1169,6 @@
     video.play().catch(() => {});
     lastFrameTime = performance.now();
 
-    // 稍等一会儿看有没有新帧，没有就恢复
     setTimeout(() => {
       if (!running || recovering) return;
       if (performance.now() - lastFrameTime > 1500) {
@@ -1322,7 +1311,6 @@
       }
     }
 
-    // 重置状态
     tracks = [];
     trackId = 0;
     detectCount = 0;
@@ -1365,7 +1353,7 @@
     gate.classList.remove('hidden');
     clearError();
     panelTitle.textContent = 'AI 视觉外挂';
-    panelSub.textContent = '后置摄像头 · 人 / 动物 / 车辆 · 自动恢复';
+    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 自动恢复';
     startBtn.textContent = '启动后置摄像头';
     await start(next);
   }
