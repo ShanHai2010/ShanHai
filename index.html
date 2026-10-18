@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>AI 视觉外挂 · 人 / 车辆</title>
+<title>AI 视觉外挂 · 高精度 · 人 / 车辆</title>
 <style>
   * { box-sizing: border-box; }
   html, body {
@@ -238,11 +238,14 @@
   <div id="gate">
     <div class="panel">
       <h1 id="panelTitle">AI 视觉外挂</h1>
-      <p class="sub" id="panelSub">后置摄像头 · 人 / 车辆 · 自动恢复</p>
+      <p class="sub" id="panelSub">后置摄像头 · 人 / 车辆 · 高精度</p>
 
       <div class="settings">
         <div class="row">
           <label>水平视场角 FOV&nbsp;<input id="fovInput" type="number" min="30" max="150" step="1" value="66" />&nbsp;°</label>
+        </div>
+        <div class="row">
+          <label><input id="ttaInput" type="checkbox" checked /> 高精度模式（翻转 TTA，框更准）</label>
         </div>
         <div class="row">
           <label><input id="enhanceInput" type="checkbox" checked /> 增强远距离检测（中心区域放大）</label>
@@ -250,7 +253,7 @@
         <div class="row">
           <label><input id="distInput" type="checkbox" checked /> 显示距离估算</label>
         </div>
-        <div class="tip">FOV 默认 66°，手机后置主摄常见 65–70°。检测频率自适应，优先保证画面流畅。</div>
+        <div class="tip">高精度模式会用原始帧和水平翻转帧各检测一次并加权融合，位置更准、误检更少，检测频率会相应降低，但绘制保持流畅。</div>
       </div>
 
       <button id="startBtn">启动后置摄像头</button>
@@ -294,13 +297,14 @@
   const diagEl    = document.getElementById('diag');
   const settingsBtn = document.getElementById('settingsBtn');
   const fovInput     = document.getElementById('fovInput');
+  const ttaInput     = document.getElementById('ttaInput');
   const enhanceInput = document.getElementById('enhanceInput');
   const distInput    = document.getElementById('distInput');
   const recoverBanner = document.getElementById('recoverBanner');
   const recoverText   = document.getElementById('recoverText');
 
   /* ============================================================
-     类别配置：只保留人和陆地车辆
+     类别：人 + 陆地车辆
   ============================================================ */
   const TARGETS = {
     person:     { label: '人',     color: '#00ffc8' },
@@ -313,28 +317,23 @@
   };
 
   const REAL_HEIGHT = {
-    person: 1.70,
-    bicycle: 1.05,
-    motorcycle: 1.15,
-    car: 1.50,
-    bus: 3.20,
-    truck: 3.20,
-    train: 3.80,
+    person: 1.70, bicycle: 1.05, motorcycle: 1.15,
+    car: 1.50, bus: 3.20, truck: 3.20, train: 3.80,
   };
 
-  const CONF_THRESHOLD = 0.30;
+  const CONF_THRESHOLD = 0.32;
   const MAX_BOXES      = 20;
-  const MAX_MISS       = 5;
-  const NMS_IOU        = 0.5;
+  const MAX_MISS       = 3;       // 丢失 3 次检测即移除，减少幽灵框
   const MAX_DRAW       = 20;
 
-  const DEFAULT_SETTINGS = { fovDeg: 66, enhance: true, showDist: true };
+  const DEFAULT_SETTINGS = { fovDeg: 66, tta: true, enhance: true, showDist: true };
   let settings = { ...DEFAULT_SETTINGS };
   try {
     const saved = JSON.parse(localStorage.getItem('aiVision.settings') || 'null');
     if (saved && typeof saved === 'object') settings = { ...DEFAULT_SETTINGS, ...saved };
   } catch (e) {}
   fovInput.value = settings.fovDeg;
+  ttaInput.checked = settings.tta;
   enhanceInput.checked = settings.enhance;
   distInput.checked = settings.showDist;
 
@@ -355,7 +354,7 @@
   // 检测调度
   let detectTimer = null;
   let detectBusy = false;
-  let detectInterval = 50;
+  let detectInterval = 100;
   let detectCount = 0;
   let detectFps = 0, lastDetectAt = 0;
 
@@ -375,6 +374,9 @@
   const RECOVER_BASE_DELAY = 1200;
   const FRAME_STALL_MS = 4000;
 
+  // 离屏画布
+  const ttaCanvas = document.createElement('canvas');
+  const ttaCtx = ttaCanvas.getContext('2d');
   const enhanceCanvas = document.createElement('canvas');
   const enhanceCtx = enhanceCanvas.getContext('2d');
 
@@ -394,7 +396,7 @@
   }
 
   /* ============================================================
-     标签缓存（更紧凑的标签）
+     标签缓存
   ============================================================ */
   const labelCache = new Map();
   let labelCacheDpr = 0;
@@ -470,13 +472,6 @@
     return Math.hypot(ax - bx, ay - by);
   };
 
-  const lerpBox = (a, b, t) => [
-    a[0] + (b[0] - a[0]) * t,
-    a[1] + (b[1] - a[1]) * t,
-    a[2] + (b[2] - a[2]) * t,
-    a[3] + (b[3] - a[3]) * t,
-  ];
-
   function computeFocal() {
     const vw = video.videoWidth || 1280;
     const vh = video.videoHeight || 720;
@@ -537,8 +532,8 @@
       }
     }
     lines.push(`FOV=${settings.fovDeg}° focalPx=${Math.round(focalPx)}`);
-    lines.push(`detectInterval=${Math.round(detectInterval)}ms detectFps=${detectFps.toFixed(1)} renderFps=${renderFps}`);
-    lines.push(`recovering=${recovering} attempts=${recoverAttempts}`);
+    lines.push(`TTA=${settings.tta} detectInterval=${Math.round(detectInterval)}ms detectFps=${detectFps.toFixed(1)} renderFps=${renderFps}`);
+    lines.push(`tracks=${tracks.length} recovering=${recovering} attempts=${recoverAttempts}`);
     lines.push(`UA: ${navigator.userAgent.slice(0, 95)}`);
     return lines.join('\n');
   }
@@ -568,6 +563,7 @@
     const fov = clamp(parseFloat(fovInput.value) || 66, 30, 150);
     fovInput.value = fov;
     settings.fovDeg = fov;
+    settings.tta = !!ttaInput.checked;
     settings.enhance = !!enhanceInput.checked;
     settings.showDist = !!distInput.checked;
     try { localStorage.setItem('aiVision.settings', JSON.stringify(settings)); } catch (e) {}
@@ -591,7 +587,7 @@
     gateMode = 'start';
     gate.classList.add('hidden');
     panelTitle.textContent = 'AI 视觉外挂';
-    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 自动恢复';
+    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 高精度';
     startBtn.textContent = '启动后置摄像头';
     switchBtn.textContent = currentFacing === 'environment' ? '切换到前置' : '切换到后置';
   }
@@ -662,83 +658,153 @@
   }
 
   /* ============================================================
-     NMS
+     WBF 加权框融合（替代 NMS，精度更高、框更稳）
   ============================================================ */
-  function nms(dets, iouThresh) {
+  function fuseBoxes(dets, iouThresh) {
     const groups = new Map();
     for (const d of dets) {
       if (!groups.has(d.class)) groups.set(d.class, []);
       groups.get(d.class).push(d);
     }
     const out = [];
-    for (const list of groups.values()) {
+    for (const [cls, list] of groups) {
       list.sort((a, b) => b.score - a.score);
-      const picked = [];
+      const clusters = [];
+
       for (const d of list) {
-        let keep = true;
-        for (const p of picked) {
-          if (iou(d.bbox, p.bbox) > iouThresh) { keep = false; break; }
+        const [x, y, w, h] = d.bbox;
+        let matched = null;
+        for (const c of clusters) {
+          const cx = c.x / c.weight;
+          const cy = c.y / c.weight;
+          const cw = c.w / c.weight;
+          const ch = c.h / c.weight;
+          const ix1 = Math.max(x, cx), iy1 = Math.max(y, cy);
+          const ix2 = Math.min(x + w, cx + cw), iy2 = Math.min(y + h, cy + ch);
+          const iw = Math.max(0, ix2 - ix1), ih = Math.max(0, iy2 - iy1);
+          const inter = iw * ih;
+          const uni = w * h + cw * ch - inter;
+          if (uni > 0 && inter / uni > iouThresh) { matched = c; break; }
         }
-        if (keep) picked.push(d);
+        if (matched) {
+          const wt = d.score;
+          matched.weight += wt;
+          matched.x += x * wt;
+          matched.y += y * wt;
+          matched.w += w * wt;
+          matched.h += h * wt;
+          if (d.score > matched.score) matched.score = d.score;
+        } else {
+          clusters.push({
+            weight: d.score,
+            x: x * d.score,
+            y: y * d.score,
+            w: w * d.score,
+            h: h * d.score,
+            score: d.score,
+          });
+        }
       }
-      out.push(...picked);
+
+      for (const c of clusters) {
+        out.push({
+          class: cls,
+          score: c.score,
+          bbox: [c.x / c.weight, c.y / c.weight, c.w / c.weight, c.h / c.weight],
+        });
+      }
     }
     return out;
   }
 
   /* ============================================================
-     跟踪器
+     全局贪心匹配 + 合并重复 track
   ============================================================ */
-  function updateTracks(dets) {
-    const used = new Set();
-    const next = [];
+  function mergeDuplicateTracks(list) {
+    const result = [];
+    for (const t of list) {
+      let merged = false;
+      for (let i = 0; i < result.length; i++) {
+        const r = result[i];
+        if (r.class !== t.class) continue;
+        if (iou(r.bbox, t.bbox) > 0.5) {
+          if (t.hits > r.hits || (t.hits === r.hits && t.score > r.score)) {
+            result[i] = t;
+          }
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) result.push(t);
+    }
+    return result;
+  }
 
-    for (const t of tracks) {
-      let best = -1, bestDist = Infinity;
-      for (let i = 0; i < dets.length; i++) {
-        if (used.has(i)) continue;
-        const d = dets[i];
+  function updateTracks(dets) {
+    // 1) 构建所有候选匹配对，按标准化距离排序
+    const pairs = [];
+    for (let ti = 0; ti < tracks.length; ti++) {
+      const t = tracks[ti];
+      for (let di = 0; di < dets.length; di++) {
+        const d = dets[di];
         if (d.class !== t.class) continue;
         const size = Math.max(Math.min(t.bbox[2], t.bbox[3]), 14);
         const dist = centerDist(t.bbox, d.bbox) / size;
-        if (dist < bestDist) { bestDist = dist; best = i; }
-      }
-      if (best >= 0 && bestDist < 1.4) {
-        used.add(best);
-        const d = dets[best];
-        next.push({
-          id: t.id,
-          class: t.class,
-          score: t.score * 0.3 + d.score * 0.7,
-          bbox: lerpBox(t.bbox, d.bbox, 0.6),
-          renderBbox: t.renderBbox || null,
-          miss: 0,
-          hits: (t.hits || 0) + 1,
-        });
-      } else if (t.miss < MAX_MISS) {
-        next.push({ ...t, miss: t.miss + 1 });
+        if (dist < 1.4) pairs.push({ ti, di, dist });
       }
     }
+    pairs.sort((a, b) => a.dist - b.dist);
 
-    for (let i = 0; i < dets.length; i++) {
-      if (used.has(i)) continue;
-      const d = dets[i];
+    // 2) 全局贪心分配：每个 track 和每个检测框最多使用一次
+    const trackUsed = new Set();
+    const detUsed = new Set();
+    const next = [];
+
+    for (const p of pairs) {
+      if (trackUsed.has(p.ti) || detUsed.has(p.di)) continue;
+      trackUsed.add(p.ti);
+      detUsed.add(p.di);
+      const t = tracks[p.ti];
+      const d = dets[p.di];
+      next.push({
+        id: t.id,
+        class: t.class,
+        score: t.score * 0.3 + d.score * 0.7,
+        bbox: d.bbox.slice(),
+        renderBbox: t.renderBbox || d.bbox.slice(),
+        miss: 0,
+        hits: (t.hits || 0) + 1,
+      });
+    }
+
+    // 3) 未匹配的旧 track：短暂保留，超过 MAX_MISS 移除
+    for (let ti = 0; ti < tracks.length; ti++) {
+      if (trackUsed.has(ti)) continue;
+      const t = tracks[ti];
+      if (t.miss < MAX_MISS) next.push({ ...t, miss: t.miss + 1 });
+    }
+
+    // 4) 未匹配的新检测：创建新 track
+    for (let di = 0; di < dets.length; di++) {
+      if (detUsed.has(di)) continue;
+      const d = dets[di];
       next.push({
         id: ++trackId,
         class: d.class,
         score: d.score,
         bbox: d.bbox.slice(),
-        renderBbox: null,
+        renderBbox: d.bbox.slice(),
         miss: 0,
         hits: 1,
       });
     }
 
-    tracks = next;
+    // 5) 合并同类别高度重叠的 track（消除重影）
+    tracks = mergeDuplicateTracks(next);
   }
 
   /* ============================================================
-     检测调度
+     检测调度（TTA 后单次较慢，间隔自适应）
   ============================================================ */
   function scheduleDetect() {
     if (!running || detectTimer || detectBusy) return;
@@ -766,7 +832,7 @@
       const now = performance.now();
       if (lastDetectAt) {
         const dt = now - lastDetectAt;
-        if (dt > 0 && dt < 3000) {
+        if (dt > 0 && dt < 5000) {
           const inst = 1000 / dt;
           detectFps = detectFps ? detectFps * 0.7 + inst * 0.3 : inst;
         }
@@ -774,7 +840,7 @@
       lastDetectAt = now;
 
       if (running) {
-        const wait = Math.max(16, detectInterval - elapsed);
+        const wait = Math.max(30, detectInterval - elapsed);
         detectTimer = setTimeout(() => {
           detectTimer = null;
           runDetect();
@@ -785,17 +851,51 @@
 
   async function doDetect() {
     detectCount++;
-    const preds = [];
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh) return;
 
+    const raw = [];
+
+    // ① 全图原始检测
     try {
       const full = await model.detect(video, MAX_BOXES, CONF_THRESHOLD);
-      preds.push(...full);
+      raw.push(...full);
     } catch (e) {
       console.warn('[detect full]', e);
     }
 
+    // ② 全图水平翻转 TTA
+    if (settings.tta) {
+      try {
+        if (ttaCanvas.width !== vw || ttaCanvas.height !== vh) {
+          ttaCanvas.width = vw;
+          ttaCanvas.height = vh;
+        }
+        ttaCtx.save();
+        ttaCtx.translate(vw, 0);
+        ttaCtx.scale(-1, 1);
+        ttaCtx.drawImage(video, 0, 0, vw, vh);
+        ttaCtx.restore();
+
+        const flipped = await model.detect(ttaCanvas, MAX_BOXES, CONF_THRESHOLD);
+        for (const p of flipped) {
+          raw.push({
+            class: p.class,
+            score: p.score,
+            bbox: [
+              vw - p.bbox[0] - p.bbox[2],
+              p.bbox[1],
+              p.bbox[2],
+              p.bbox[3],
+            ],
+          });
+        }
+      } catch (e) {
+        console.warn('[detect tta]', e);
+      }
+    }
+
+    // ③ 中心区域放大检测（每 3 次检测做一次）
     if (settings.enhance && vw > 480 && detectCount % 3 === 0) {
       const rx = Math.floor(vw * 0.15);
       const ry = Math.floor(vh * 0.05);
@@ -818,7 +918,7 @@
         const kx = rw / cw;
         const ky = rh / ch;
         for (const p of regionPreds) {
-          preds.push({
+          raw.push({
             class: p.class,
             score: p.score,
             bbox: [
@@ -834,11 +934,16 @@
       }
     }
 
-    const filtered = preds.filter(
+    // ④ 过滤目标类别 + 置信度
+    const filtered = raw.filter(
       (p) => TARGETS[p.class] && p.score >= CONF_THRESHOLD
     );
-    const merged = nms(filtered, NMS_IOU);
-    updateTracks(merged);
+
+    // ⑤ WBF 加权融合（比 NMS 更准、更稳）
+    const fused = fuseBoxes(filtered, 0.5);
+
+    // ⑥ 更新跟踪
+    updateTracks(fused);
   }
 
   /* ============================================================
@@ -877,50 +982,38 @@
     return text;
   }
 
-  /**
-   * 绘制目标框：角标长度、线宽根据目标大小自适应，
-   * 整体框大小适中，不粗不重。
-   */
   function drawTarget(x, y, w, h, conf, track) {
     const color = conf.color;
-    const alpha = track.miss > 0 ? Math.max(0.2, 1 - track.miss * 0.18) : 1;
+    const alpha = track.miss > 0 ? Math.max(0.25, 1 - track.miss * 0.25) : 1;
 
     const base = Math.min(w, h);
-    // 角标长度：目标的 18%，限制在 6~22px
     const L = clamp(base * 0.18, 6, 22);
-    // 线宽：目标的 1.2%，限制在 1.4~2.4px
     const lw = clamp(base * 0.012, 1.4, 2.4);
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 轻光晕（比之前更细）
     ctx.globalAlpha = alpha * 0.14;
     ctx.strokeStyle = color;
     ctx.lineWidth = lw + 2.5;
     drawCorners(x, y, w, h, L);
 
-    // 主线
     ctx.globalAlpha = alpha;
     ctx.lineWidth = lw;
     drawCorners(x, y, w, h, L);
 
-    // 细边框（弱化）
     ctx.globalAlpha = alpha * 0.25;
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
 
-    // 非常淡的填充
     ctx.globalAlpha = alpha * 0.045;
     ctx.fillStyle = color;
     ctx.fillRect(x, y, w, h);
 
-    // 底部置信度条
     ctx.globalAlpha = alpha * 0.7;
     ctx.fillStyle = color;
     ctx.fillRect(x, y + h + 2, w * track.score, 2);
 
-    // 标签
     const label = getLabel(buildLabelText(track, conf), color);
     let lx = clamp(x, 0, W - label.w);
     let ly = y - label.h - 4;
@@ -930,7 +1023,7 @@
   }
 
   function updateRenderBboxes(dt) {
-    const alpha = dt > 50 ? 1 : (1 - Math.exp(-dt / 70));
+    const alpha = dt > 100 ? 1 : (1 - Math.exp(-dt / 90));
     for (const t of tracks) {
       if (!t.renderBbox) {
         t.renderBbox = t.bbox.slice();
@@ -942,6 +1035,22 @@
       r[2] += (b[2] - r[2]) * alpha;
       r[3] += (b[3] - r[3]) * alpha;
     }
+  }
+
+  /* 绘制前最后一道去重，消除视觉重影 */
+  function dedupForDraw(list) {
+    const sorted = list.slice().sort((a, b) => b.score - a.score);
+    const out = [];
+    for (const t of sorted) {
+      let dup = false;
+      for (const o of out) {
+        const i = iou(t.bbox, o.bbox);
+        if (t.class === o.class && i > 0.45) { dup = true; break; }
+        if (t.class !== o.class && i > 0.8) { dup = true; break; }
+      }
+      if (!dup) out.push(t);
+    }
+    return out;
   }
 
   function render(now) {
@@ -958,8 +1067,8 @@
       lastFpsAt = now;
 
       if (running && model) {
-        if (renderFps < 48) detectInterval = Math.min(150, detectInterval + 15);
-        else if (renderFps > 57) detectInterval = Math.max(38, detectInterval - 6);
+        if (renderFps < 48) detectInterval = Math.min(350, detectInterval + 25);
+        else if (renderFps > 57) detectInterval = Math.max(70, detectInterval - 8);
       }
     }
 
@@ -976,10 +1085,8 @@
     const ox = (W - dw) / 2, oy = (H - dh) / 2;
     const mirrored = currentFacing === 'user';
 
-    let list = tracks;
-    if (tracks.length > MAX_DRAW) {
-      list = tracks.slice().sort((a, b) => b.score - a.score).slice(0, MAX_DRAW);
-    }
+    let list = dedupForDraw(tracks);
+    if (list.length > MAX_DRAW) list = list.slice(0, MAX_DRAW);
 
     let visible = 0;
     for (const t of list) {
@@ -1314,7 +1421,7 @@
     tracks = [];
     trackId = 0;
     detectCount = 0;
-    detectInterval = 50;
+    detectInterval = 100;
     detectFps = 0;
     lastDetectAt = 0;
     lastRenderAt = performance.now();
@@ -1353,7 +1460,7 @@
     gate.classList.remove('hidden');
     clearError();
     panelTitle.textContent = 'AI 视觉外挂';
-    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 自动恢复';
+    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 高精度';
     startBtn.textContent = '启动后置摄像头';
     await start(next);
   }
