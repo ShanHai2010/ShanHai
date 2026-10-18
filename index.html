@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>AI 视觉外挂 · 高精度 · 人 / 车辆</title>
+<title>AI 视觉外挂 · 高精度确认 · 人 / 车辆</title>
 <style>
   * { box-sizing: border-box; }
   html, body {
@@ -238,22 +238,25 @@
   <div id="gate">
     <div class="panel">
       <h1 id="panelTitle">AI 视觉外挂</h1>
-      <p class="sub" id="panelSub">后置摄像头 · 人 / 车辆 · 高精度</p>
+      <p class="sub" id="panelSub">后置摄像头 · 人 / 车辆 · 检测确认</p>
 
       <div class="settings">
         <div class="row">
           <label>水平视场角 FOV&nbsp;<input id="fovInput" type="number" min="30" max="150" step="1" value="66" />&nbsp;°</label>
         </div>
         <div class="row">
-          <label><input id="ttaInput" type="checkbox" checked /> 高精度模式（翻转 TTA，框更准）</label>
+          <label><input id="ttaInput" type="checkbox" checked /> 高精度模式（翻转 TTA + WBF 融合）</label>
         </div>
         <div class="row">
-          <label><input id="enhanceInput" type="checkbox" checked /> 增强远距离检测（中心区域放大）</label>
+          <label><input id="confirmInput" type="checkbox" checked /> 检测确认（连续命中才绘制）</label>
+        </div>
+        <div class="row">
+          <label><input id="enhanceInput" type="checkbox" checked /> 增强远距离检测</label>
         </div>
         <div class="row">
           <label><input id="distInput" type="checkbox" checked /> 显示距离估算</label>
         </div>
-        <div class="tip">高精度模式会用原始帧和水平翻转帧各检测一次并加权融合，位置更准、误检更少，检测频率会相应降低，但绘制保持流畅。</div>
+        <div class="tip">检测确认开启后，只有连续 2 次检测到同一目标才会绘制，显著减少误检与幽灵框。关闭后每个检测框都会立即绘制，但可能出现偶发误检。</div>
       </div>
 
       <button id="startBtn">启动后置摄像头</button>
@@ -298,6 +301,7 @@
   const settingsBtn = document.getElementById('settingsBtn');
   const fovInput     = document.getElementById('fovInput');
   const ttaInput     = document.getElementById('ttaInput');
+  const confirmInput = document.getElementById('confirmInput');
   const enhanceInput = document.getElementById('enhanceInput');
   const distInput    = document.getElementById('distInput');
   const recoverBanner = document.getElementById('recoverBanner');
@@ -321,12 +325,22 @@
     car: 1.50, bus: 3.20, truck: 3.20, train: 3.80,
   };
 
-  const CONF_THRESHOLD = 0.32;
-  const MAX_BOXES      = 20;
-  const MAX_MISS       = 3;       // 丢失 3 次检测即移除，减少幽灵框
-  const MAX_DRAW       = 20;
+  /* ============================================================
+     高精度参数
+  ============================================================ */
+  const CONF_THRESHOLD    = 0.45;  // 更高门槛，减少噪声进入跟踪
+  const WBF_IOU           = 0.55;  // WBF 融合 IoU
+  const WBF_MIN_WEIGHT    = 0.55;  // 簇内最小总权重，过滤极弱框
+  const MAX_BOXES         = 15;    // 单次检测最多取前 15，聚焦高质量框
+  const MAX_MISS          = 2;     // 连续 2 次未检测即移除
+  const MIN_HITS_TO_DRAW  = 2;     // 连续命中 2 次才绘制（确认机制）
+  const MIN_BOX_W         = 10;    // 最小像素宽
+  const MIN_BOX_H         = 10;    // 最小像素高
+  const MIN_ASPECT        = 0.12;  // 允许的最扁宽高比
+  const MAX_ASPECT        = 6.5;   // 允许的最窄宽高比
+  const MAX_DRAW          = 15;
 
-  const DEFAULT_SETTINGS = { fovDeg: 66, tta: true, enhance: true, showDist: true };
+  const DEFAULT_SETTINGS = { fovDeg: 66, tta: true, confirm: true, enhance: true, showDist: true };
   let settings = { ...DEFAULT_SETTINGS };
   try {
     const saved = JSON.parse(localStorage.getItem('aiVision.settings') || 'null');
@@ -334,6 +348,7 @@
   } catch (e) {}
   fovInput.value = settings.fovDeg;
   ttaInput.checked = settings.tta;
+  confirmInput.checked = settings.confirm;
   enhanceInput.checked = settings.enhance;
   distInput.checked = settings.showDist;
 
@@ -350,11 +365,12 @@
 
   let tracks = [];
   let trackId = 0;
+  let lastConfirmedCount = 0;
 
   // 检测调度
   let detectTimer = null;
   let detectBusy = false;
-  let detectInterval = 100;
+  let detectInterval = 120;
   let detectCount = 0;
   let detectFps = 0, lastDetectAt = 0;
 
@@ -480,6 +496,17 @@
     focalPx = longSide / (2 * Math.tan((fov * Math.PI) / 360));
   }
 
+  /* 高精度框有效性检查 */
+  function isValidBox(bbox, vw, vh) {
+    const [, , w, h] = bbox;
+    if (w < MIN_BOX_W || h < MIN_BOX_H) return false;
+    const aspect = w / h;
+    if (aspect < MIN_ASPECT || aspect > MAX_ASPECT) return false;
+    // 面积至少占画面的 0.06%（约 1280x720 下 550 像素）
+    if ((w * h) / (vw * vh) < 0.0006) return false;
+    return true;
+  }
+
   /* ============================================================
      尺寸
   ============================================================ */
@@ -532,8 +559,10 @@
       }
     }
     lines.push(`FOV=${settings.fovDeg}° focalPx=${Math.round(focalPx)}`);
-    lines.push(`TTA=${settings.tta} detectInterval=${Math.round(detectInterval)}ms detectFps=${detectFps.toFixed(1)} renderFps=${renderFps}`);
-    lines.push(`tracks=${tracks.length} recovering=${recovering} attempts=${recoverAttempts}`);
+    lines.push(`TTA=${settings.tta} confirm=${settings.confirm}`);
+    lines.push(`detectInterval=${Math.round(detectInterval)}ms detectFps=${detectFps.toFixed(1)} renderFps=${renderFps}`);
+    lines.push(`tracks=${tracks.length} confirmed=${lastConfirmedCount}`);
+    lines.push(`recovering=${recovering} attempts=${recoverAttempts}`);
     lines.push(`UA: ${navigator.userAgent.slice(0, 95)}`);
     return lines.join('\n');
   }
@@ -564,6 +593,7 @@
     fovInput.value = fov;
     settings.fovDeg = fov;
     settings.tta = !!ttaInput.checked;
+    settings.confirm = !!confirmInput.checked;
     settings.enhance = !!enhanceInput.checked;
     settings.showDist = !!distInput.checked;
     try { localStorage.setItem('aiVision.settings', JSON.stringify(settings)); } catch (e) {}
@@ -587,7 +617,7 @@
     gateMode = 'start';
     gate.classList.add('hidden');
     panelTitle.textContent = 'AI 视觉外挂';
-    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 高精度';
+    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 检测确认';
     startBtn.textContent = '启动后置摄像头';
     switchBtn.textContent = currentFacing === 'environment' ? '切换到前置' : '切换到后置';
   }
@@ -658,7 +688,7 @@
   }
 
   /* ============================================================
-     WBF 加权框融合（替代 NMS，精度更高、框更稳）
+     WBF 加权框融合
   ============================================================ */
   function fuseBoxes(dets, iouThresh) {
     const groups = new Map();
@@ -707,6 +737,8 @@
       }
 
       for (const c of clusters) {
+        // 过滤极弱簇
+        if (c.weight < WBF_MIN_WEIGHT) continue;
         out.push({
           class: cls,
           score: c.score,
@@ -718,7 +750,7 @@
   }
 
   /* ============================================================
-     全局贪心匹配 + 合并重复 track
+     跟踪器：全局贪心匹配 + 检测确认
   ============================================================ */
   function mergeDuplicateTracks(list) {
     const result = [];
@@ -741,7 +773,9 @@
   }
 
   function updateTracks(dets) {
-    // 1) 构建所有候选匹配对，按标准化距离排序
+    const vw = video.videoWidth, vh = video.videoHeight;
+
+    // 1) 构建匹配对
     const pairs = [];
     for (let ti = 0; ti < tracks.length; ti++) {
       const t = tracks[ti];
@@ -755,7 +789,7 @@
     }
     pairs.sort((a, b) => a.dist - b.dist);
 
-    // 2) 全局贪心分配：每个 track 和每个检测框最多使用一次
+    // 2) 全局贪心
     const trackUsed = new Set();
     const detUsed = new Set();
     const next = [];
@@ -769,7 +803,7 @@
       next.push({
         id: t.id,
         class: t.class,
-        score: t.score * 0.3 + d.score * 0.7,
+        score: t.score * 0.25 + d.score * 0.75,   // 更信任当前检测
         bbox: d.bbox.slice(),
         renderBbox: t.renderBbox || d.bbox.slice(),
         miss: 0,
@@ -777,17 +811,19 @@
       });
     }
 
-    // 3) 未匹配的旧 track：短暂保留，超过 MAX_MISS 移除
+    // 3) 未匹配旧 track：短暂保留
     for (let ti = 0; ti < tracks.length; ti++) {
       if (trackUsed.has(ti)) continue;
       const t = tracks[ti];
       if (t.miss < MAX_MISS) next.push({ ...t, miss: t.miss + 1 });
     }
 
-    // 4) 未匹配的新检测：创建新 track
+    // 4) 新 track：hits=1（未确认）
     for (let di = 0; di < dets.length; di++) {
       if (detUsed.has(di)) continue;
       const d = dets[di];
+      // 新检测再次做有效性检查，防止噪声进入
+      if (!isValidBox(d.bbox, vw, vh)) continue;
       next.push({
         id: ++trackId,
         class: d.class,
@@ -799,12 +835,12 @@
       });
     }
 
-    // 5) 合并同类别高度重叠的 track（消除重影）
+    // 5) 合并重复
     tracks = mergeDuplicateTracks(next);
   }
 
   /* ============================================================
-     检测调度（TTA 后单次较慢，间隔自适应）
+     检测调度
   ============================================================ */
   function scheduleDetect() {
     if (!running || detectTimer || detectBusy) return;
@@ -882,12 +918,7 @@
           raw.push({
             class: p.class,
             score: p.score,
-            bbox: [
-              vw - p.bbox[0] - p.bbox[2],
-              p.bbox[1],
-              p.bbox[2],
-              p.bbox[3],
-            ],
+            bbox: [vw - p.bbox[0] - p.bbox[2], p.bbox[1], p.bbox[2], p.bbox[3]],
           });
         }
       } catch (e) {
@@ -895,7 +926,7 @@
       }
     }
 
-    // ③ 中心区域放大检测（每 3 次检测做一次）
+    // ③ 中心区域放大检测
     if (settings.enhance && vw > 480 && detectCount % 3 === 0) {
       const rx = Math.floor(vw * 0.15);
       const ry = Math.floor(vh * 0.05);
@@ -934,13 +965,15 @@
       }
     }
 
-    // ④ 过滤目标类别 + 置信度
+    // ④ 过滤：类别、置信度、几何有效性
     const filtered = raw.filter(
-      (p) => TARGETS[p.class] && p.score >= CONF_THRESHOLD
+      (p) => TARGETS[p.class] &&
+             p.score >= CONF_THRESHOLD &&
+             isValidBox(p.bbox, vw, vh)
     );
 
-    // ⑤ WBF 加权融合（比 NMS 更准、更稳）
-    const fused = fuseBoxes(filtered, 0.5);
+    // ⑤ WBF 融合
+    const fused = fuseBoxes(filtered, WBF_IOU);
 
     // ⑥ 更新跟踪
     updateTracks(fused);
@@ -982,9 +1015,9 @@
     return text;
   }
 
-  function drawTarget(x, y, w, h, conf, track) {
+  function drawTarget(x, y, w, h, conf, track, alphaMul) {
     const color = conf.color;
-    const alpha = track.miss > 0 ? Math.max(0.25, 1 - track.miss * 0.25) : 1;
+    const alpha = (track.miss > 0 ? Math.max(0.25, 1 - track.miss * 0.25) : 1) * alphaMul;
 
     const base = Math.min(w, h);
     const L = clamp(base * 0.18, 6, 22);
@@ -1037,7 +1070,7 @@
     }
   }
 
-  /* 绘制前最后一道去重，消除视觉重影 */
+  /* 绘制前最终去重 */
   function dedupForDraw(list) {
     const sorted = list.slice().sort((a, b) => b.score - a.score);
     const out = [];
@@ -1067,8 +1100,8 @@
       lastFpsAt = now;
 
       if (running && model) {
-        if (renderFps < 48) detectInterval = Math.min(350, detectInterval + 25);
-        else if (renderFps > 57) detectInterval = Math.max(70, detectInterval - 8);
+        if (renderFps < 48) detectInterval = Math.min(400, detectInterval + 25);
+        else if (renderFps > 57) detectInterval = Math.max(80, detectInterval - 8);
       }
     }
 
@@ -1085,8 +1118,24 @@
     const ox = (W - dw) / 2, oy = (H - dh) / 2;
     const mirrored = currentFacing === 'user';
 
-    let list = dedupForDraw(tracks);
-    if (list.length > MAX_DRAW) list = list.slice(0, MAX_DRAW);
+    // ===== 绘制来源确认 =====
+    // 只绘制：
+    //  1) 已确认（hits >= MIN_HITS_TO_DRAW）
+    //  2) 最近一次检测真实存在（miss === 0）或刚丢失一次（miss === 1）
+    //  3) 几何有效
+    const confirmedTracks = [];
+    for (const t of tracks) {
+      if (t.hits < MIN_HITS_TO_DRAW) continue;
+      if (t.miss > 1) continue;
+      if (!isValidBox(t.bbox, vw, vh)) continue;
+      confirmedTracks.push(t);
+    }
+    lastConfirmedCount = confirmedTracks.length;
+
+    let list = dedupForDraw(confirmedTracks);
+    if (list.length > MAX_DRAW) {
+      list = list.slice().sort((a, b) => b.score - a.score).slice(0, MAX_DRAW);
+    }
 
     let visible = 0;
     for (const t of list) {
@@ -1100,15 +1149,17 @@
       const h = bh * scale;
       if (mirrored) x = W - x - w;
       if (w < 5 || h < 5) continue;
+      // miss === 0 完整绘制，miss === 1 半透明过渡
+      const alphaMul = t.miss === 0 ? 1 : 0.4;
       visible++;
-      drawTarget(x, y, w, h, conf, t);
+      drawTarget(x, y, w, h, conf, t, alphaMul);
     }
     ctx.globalAlpha = 1;
 
     if (now - lastHudAt > 250) {
       lastHudAt = now;
       statsEl.textContent =
-        `目标 ${visible} · 检测 ${detectFps.toFixed(0)}fps · 渲染 ${renderFps}fps`;
+        `确认 ${visible} · 检测 ${detectFps.toFixed(0)}fps · 渲染 ${renderFps}fps`;
     }
   }
   requestAnimationFrame(render);
@@ -1420,8 +1471,9 @@
 
     tracks = [];
     trackId = 0;
+    lastConfirmedCount = 0;
     detectCount = 0;
-    detectInterval = 100;
+    detectInterval = 120;
     detectFps = 0;
     lastDetectAt = 0;
     lastRenderAt = performance.now();
@@ -1460,7 +1512,7 @@
     gate.classList.remove('hidden');
     clearError();
     panelTitle.textContent = 'AI 视觉外挂';
-    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 高精度';
+    panelSub.textContent = '后置摄像头 · 人 / 车辆 · 检测确认';
     startBtn.textContent = '启动后置摄像头';
     await start(next);
   }
